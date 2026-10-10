@@ -56,6 +56,12 @@ async function makeRoom(mode, size) {
 }
 function close(R) { R.cl.forEach(c => c.res && c.res.destroy()); }
 
+/** 객체 안 어딘가에 정확히 이 문자열 값이 있는지 (부분 일치 아님: '말' ⊂ '얼룩말' 같은 오탐 방지) */
+function hasValue(o, w) {
+  if (typeof o === 'string') return o === w;
+  if (o && typeof o === 'object') return Object.values(o).some(x => hasValue(x, w));
+  return false;
+}
 /** 비밀 정보가 본인 외에게 새지 않는지 점검 */
 function checkSecrecy(R, mode) {
   const V = R.cl.map(c => c.view);
@@ -64,24 +70,25 @@ function checkSecrecy(R, mode) {
   for (let i = 0; i < size; i++) {
     const v = V[i], role = g.roles[i], s = JSON.stringify(v);
     assert.ok(!('result' in v) && !('roles' in v) && !('tally' in v), '결과 전 비공개 필드 없음');
-    if (role === 'liar') { assert.deepStrictEqual(v.card, { role: 'liar' }); assert.ok(!s.includes(g.word), '라이어에게 제시어 미전송'); }
+    if (role === 'liar') { assert.deepStrictEqual(v.card, { role: 'liar' }); assert.ok(!hasValue(v, g.word), '라이어에게 제시어 미전송'); }
     if (role === 'fool') {
       assert.strictEqual(v.card.role, 'citizen', '바보는 자신을 시민으로 봄');
-      assert.strictEqual(v.card.word, g.foolWord); assert.ok(!s.includes(g.word), '바보에게 시민 제시어 미전송');
+      assert.strictEqual(v.card.word, g.foolWord); assert.ok(!hasValue(v, g.word), '바보에게 시민 제시어 미전송');
     }
     if (role === 'citizen') {
       assert.strictEqual(v.card.word, g.word);
-      if (g.foolWord) assert.ok(!s.includes(g.foolWord), '시민에게 바보 제시어 미전송');
+      if (g.foolWord) assert.ok(!hasValue(v, g.foolWord), '시민에게 바보 제시어 미전송');
       assert.ok(!('liar' in v.card), '시민은 라이어를 모름');
     }
     if (role === 'spy') { assert.strictEqual(v.card.word, g.word); assert.strictEqual(v.card.liar, g.roles.indexOf('liar')); }
     if (mode === 'spy' && role !== 'spy') assert.ok(!s.includes('"role":"spy"') && !('liar' in v.card && role !== 'spy'), '스파이 정체 비공개');
   }
   // 모든 실시간 메시지 전체에서도 확인
-  for (let i = 0; i < size; i++) {
-    const all = R.cl[i].raw.join('\n');
-    if (g.roles[i] === 'liar') assert.ok(!all.includes(g.word));
-    if (g.roles[i] === 'fool') assert.ok(!all.includes('"word":"' + g.word + '"'));
+  for (let i = 0; i < size; i++) { // 이번 판의 모든 실시간 메시지에서도 확인 (지난 판 결과에는 지난 정답이 공개되므로 제외)
+    const msgs = R.cl[i].raw.map(m => JSON.parse(m)).filter(m => m.n === g.n);
+    if (g.roles[i] === 'liar') assert.ok(msgs.every(m => !hasValue(m, g.word)), '라이어 메시지에 정답 없음');
+    if (g.roles[i] === 'fool') assert.ok(msgs.every(m => !hasValue(m, g.word)), '바보 메시지에 시민 정답 없음');
+    if (g.roles[i] === 'citizen' && g.foolWord) assert.ok(msgs.every(m => !hasValue(m, g.foolWord)), '시민 메시지에 바보 제시어 없음');
   }
   checks++;
 }

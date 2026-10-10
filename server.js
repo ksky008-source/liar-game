@@ -63,6 +63,14 @@ const cleanText = s => String(s == null ? '' : s).replace(/[\u0000-\u001f\u007f]
 const len = s => [...s].length;
 /** @param {string} s */
 const squash = s => s.replace(/\s/g, '');
+const PARTICLES = ['', '은', '는', '이', '가', '을', '를', '도', '야', '요', '랑', '와', '과', '의', '에', '로', '만'];
+/** 설명에 제시어를 그대로 썼는지. 두 글자 이상은 포함 여부, 한 글자(배·말·춤 등)는 낱말 단위로만 판단합니다.
+ * @param {string} text @param {string} word */
+function saysWord(text, word) {
+  const w = squash(word);
+  if (len(w) >= 2) return squash(text).includes(w);
+  return text.split(/[\s.,!?~·'"()\[\]]+/).some(t => PARTICLES.some(p => t === w + p));
+}
 /** @template T @param {T[]} a @returns {T[]} */
 function shuffle(a) { for (let i = a.length - 1; i > 0; i--) { const j = rint(i + 1); [a[i], a[j]] = [a[j], a[i]]; } return a; }
 
@@ -199,7 +207,7 @@ const actions = {
     if (!text) fail('설명을 한 줄 써 주세요.');
     if (len(text) > MAX_DESC) fail(`설명은 ${MAX_DESC}자 이하로 써 주세요.`);
     const mine = wordOf(g, seat);
-    if (mine && squash(text).includes(squash(mine))) fail('제시어를 그대로 쓰면 안 돼요. 돌려서 설명해 주세요.');
+    if (mine && saysWord(text, mine)) fail('제시어를 그대로 쓰면 안 돼요. 돌려서 설명해 주세요.');
     g.desc.push({ seat, round: Math.floor(g.turn / g.size), text });
     g.turn++;
     if (g.turn >= g.size * 2) g.phase = 'vote';
@@ -406,4 +414,4 @@ setInterval(() => {
 }, 60000).unref();
 
 if (require.main === module) server.listen(PORT, () => console.log(`라이어게임 서버 실행 중: http://localhost:${PORT}`));
-module.exports = { server, rooms, tokens, MODES };
+module.exports = { server, rooms, tokens, MODES, saysWord };
