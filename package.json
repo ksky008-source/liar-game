@@ -1,0 +1,9 @@
+{
+  "name": "liar-game",
+  "version": "1.0.0",
+  "description": "4인 온라인 라이어게임 (라이어 테이블)",
+  "main": "server.js",
+  "scripts": { "start": "node server.js", "test": "node test.js" },
+  "engines": { "node": ">=18" },
+  "license": "UNLICENSED"
+}
