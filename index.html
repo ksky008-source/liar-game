@@ -3,21 +3,23 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>라이어 테이블</title>
-<meta name="description" content="친구 4명이 각자 휴대폰·PC로 함께하는 온라인 라이어게임">
+<title>라이어게임</title>
+<meta name="description" content="친구들과 각자 휴대폰·PC로 함께하는 실시간 온라인 라이어게임 (노멀·바보·스파이모드, 4~8인)">
+<meta name="author" content="KIMJIHUN">
+<meta name="creator" content="KIMJIHUN">
+<meta property="og:title" content="라이어게임">
+<meta property="og:description" content="4~8명이 함께하는 실시간 온라인 라이어게임 · MADE BY KIMJIHUN">
 <meta name="theme-color" content="#0a1322">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=IBM+Plex+Sans+KR:wght@400;500;700&family=JetBrains+Mono:wght@500;700&display=swap">
 <style>
-body { margin: 0; padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
-[hidden] { display: none !important; }
-
-/* Layout: one centered column on phones, a 2-column game table (role card + seats | action panel) from 860px. Single dark look by design. */
+/* Layout: one column on phones; from 860px a 2-column game table (role card + seats | action panel). Single dark look by design. */
 :root {
   --bg: #0a1322; --panel: #101c31; --raised: #172742; --line: #24375a; --line-soft: #1b2b48;
   --fg: #e7eef8; --muted: #8ea2c0; --faint: #5c7194;
   --mint: #3fe3bf; --mint-soft: rgba(63,227,191,.12); --mint-ink: #04251f;
-  --liar: #ff7486; --liar-soft: rgba(255,116,134,.12); --warn: #f2c35b;
+  --amber: #f2b45b; --amber-soft: rgba(242,180,91,.12);
+  --liar: #ff7486; --liar-soft: rgba(255,116,134,.12);
   --f-display: "Black Han Sans", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
   --f-body: "IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
   --f-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
@@ -25,19 +27,22 @@ body { margin: 0; padding-top: env(safe-area-inset-top, 0px); padding-bottom: en
   color-scheme: dark;
 }
 html, body { min-height: 100%; }
-body { background: var(--bg); color: var(--fg); font-family: var(--f-body); font-size: 15px; line-height: 1.55;
+body { margin: 0; padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px);
+  background: var(--bg); color: var(--fg); font-family: var(--f-body); font-size: 15px; line-height: 1.55;
   background-image: radial-gradient(1200px 500px at 50% -200px, rgba(63,227,191,.08), transparent 70%); }
+[hidden] { display: none !important; }
 * { box-sizing: border-box; }
 button, input { font: inherit; color: inherit; }
-.wrap { max-width: 1040px; margin: 0 auto; padding-inline: 16px; padding-block: 18px 48px; }
-header.top { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 22px; }
+.wrap { max-width: 1060px; margin: 0 auto; padding-inline: 16px; padding-block: 18px 32px; }
+header.top { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 22px; flex-wrap: wrap; }
 .brand { display: flex; align-items: center; gap: 10px; }
-.mark { width: 34px; height: 34px; border-radius: 9px; background: var(--mint); color: var(--mint-ink); display: grid; place-items: center; font-family: var(--f-display); font-size: 18px; }
-.brand b { font-family: var(--f-display); font-weight: 400; font-size: 20px; letter-spacing: .5px; }
-.chip { font-family: var(--f-mono); font-size: 13px; padding: 5px 10px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); }
+.mark { width: 36px; height: 36px; border-radius: 10px; background: var(--mint); color: var(--mint-ink); display: grid; place-items: center; font-family: var(--f-display); font-size: 17px; }
+.brand b { font-family: var(--f-display); font-weight: 400; font-size: 22px; letter-spacing: .5px; }
+.chip { font-family: var(--f-mono); font-size: 13px; padding: 5px 10px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); white-space: nowrap; }
 .chip strong { color: var(--mint); letter-spacing: 2px; }
+.chip.mode { color: var(--amber); border-color: rgba(242,180,91,.4); font-family: var(--f-body); font-weight: 700; }
 h1, h2, h3 { margin: 0; text-wrap: balance; }
-h1 { font-family: var(--f-display); font-weight: 400; font-size: clamp(30px, 6vw, 46px); line-height: 1.15; }
+h1 { font-family: var(--f-display); font-weight: 400; font-size: clamp(32px, 6vw, 48px); line-height: 1.15; }
 h2 { font-family: var(--f-display); font-weight: 400; font-size: 22px; }
 h3 { font-size: 15px; font-weight: 700; }
 p { margin: 0; }
@@ -46,31 +51,36 @@ p { margin: 0; }
 .stack { display: flex; flex-direction: column; gap: 14px; }
 .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
 .panel { background: var(--panel); border: 1px solid var(--line-soft); border-radius: var(--r); padding: 20px; min-width: 0; }
-.btn { appearance: none; border: 1px solid var(--line); background: var(--raised); border-radius: 11px; padding: 12px 18px; font-weight: 700; cursor: pointer; transition: background .15s, border-color .15s, transform .1s; }
+.btn { appearance: none; border: 1px solid var(--line); background: var(--raised); border-radius: 11px; padding: 12px 18px; font-weight: 700; cursor: pointer; transition: background .15s, border-color .15s, transform .1s; min-height: 46px; }
 .btn:hover:not(:disabled) { border-color: var(--mint); }
 .btn:active:not(:disabled) { transform: translateY(1px); }
 .btn:disabled { opacity: .45; cursor: not-allowed; }
 .btn.primary { background: var(--mint); color: var(--mint-ink); border-color: var(--mint); }
 .btn.primary:hover:not(:disabled) { background: #69ecd0; }
 .btn.ghost { background: transparent; }
+.btn.small { padding: 7px 12px; font-size: 13px; min-height: 36px; }
 .btn.block { width: 100%; }
 :focus-visible { outline: 2px solid var(--mint); outline-offset: 2px; }
 .field { display: flex; flex-direction: column; gap: 6px; }
 .field label { font-size: 13px; color: var(--muted); font-weight: 500; }
-input[type=text] { width: 100%; background: var(--bg); border: 1px solid var(--line); border-radius: 11px; padding: 12px 14px; outline: none; }
+input[type=text] { width: 100%; background: var(--bg); border: 1px solid var(--line); border-radius: 11px; padding: 12px 14px; outline: none; min-height: 46px; }
 input[type=text]:focus { border-color: var(--mint); box-shadow: 0 0 0 3px var(--mint-soft); }
 input.code { font-family: var(--f-mono); letter-spacing: .35em; text-transform: uppercase; font-size: 18px; }
 
 /* home */
 .home { display: grid; gap: 22px; grid-template-columns: 1fr; }
-@media (min-width: 860px) { .home { grid-template-columns: 1.1fr 1fr; align-items: start; } }
-.hero { display: flex; flex-direction: column; gap: 14px; padding-block: 6px; }
+@media (min-width: 900px) { .home { grid-template-columns: 1fr 1fr; align-items: start; } }
+.hero { display: flex; flex-direction: column; gap: 14px; }
 .hero h1 em { font-style: normal; color: var(--mint); }
-.steps { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 10px; }
-.steps li { display: grid; grid-template-columns: 30px 1fr; gap: 10px; align-items: start; }
-.steps .n { font-family: var(--f-mono); font-size: 12px; color: var(--mint); border: 1px solid var(--line); border-radius: 8px; height: 26px; display: grid; place-items: center; }
-.steps b { display: block; font-weight: 700; }
-.steps span { color: var(--muted); font-size: 14px; }
+.modes { display: grid; gap: 10px; grid-template-columns: 1fr; }
+.modecard { text-align: left; display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; gap: 4px 12px; align-items: start; padding: 14px 16px; border-radius: 13px; border: 1px solid var(--line); background: var(--panel); cursor: pointer; }
+.modecard:hover { border-color: rgba(63,227,191,.5); }
+.modecard .radio { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--line); margin-top: 3px; }
+.modecard b { font-size: 16px; }
+.modecard .min { font-family: var(--f-mono); font-size: 12px; color: var(--amber); white-space: nowrap; padding-top: 3px; }
+.modecard p { grid-column: 2 / 4; color: var(--muted); font-size: 13.5px; }
+.modecard[aria-checked=true] { border-color: var(--mint); background: linear-gradient(0deg, var(--mint-soft), var(--mint-soft)), var(--panel); }
+.modecard[aria-checked=true] .radio { border-color: var(--mint); background: radial-gradient(circle, var(--mint) 0 45%, transparent 50%); }
 .or { display: flex; align-items: center; gap: 10px; color: var(--faint); font-size: 12px; }
 .or::before, .or::after { content: ""; flex: 1; height: 1px; background: var(--line-soft); }
 
@@ -79,49 +89,68 @@ input.code { font-family: var(--f-mono); letter-spacing: .35em; text-transform: 
 .code-big { font-family: var(--f-mono); font-weight: 700; font-size: clamp(30px, 8vw, 44px); letter-spacing: .3em; color: var(--mint); }
 .seats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 @media (min-width: 640px) { .seats { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
-.seat { border: 1px solid var(--line-soft); border-radius: 12px; padding: 14px; background: var(--raised); display: flex; flex-direction: column; gap: 6px; min-height: 92px; min-width: 0; }
+.seat { border: 1px solid var(--line-soft); border-radius: 12px; padding: 14px; background: var(--raised); display: flex; flex-direction: column; gap: 6px; min-height: 88px; min-width: 0; }
 .seat.empty { background: transparent; border-style: dashed; color: var(--faint); }
 .seat .no { font-family: var(--f-mono); font-size: 12px; color: var(--faint); }
 .seat .nm { font-weight: 700; font-size: 16px; overflow-wrap: anywhere; }
 .tag { display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 6px; background: var(--mint-soft); color: var(--mint); margin-right: 4px; }
 .tag.me { background: rgba(255,255,255,.07); color: var(--fg); }
+.tag.amber { background: var(--amber-soft); color: var(--amber); }
+.seg { display: flex; gap: 6px; flex-wrap: wrap; }
+.seg button { flex: 1 1 110px; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); cursor: pointer; font-weight: 700; font-size: 14px; }
+.seg button[aria-pressed=true] { border-color: var(--mint); background: var(--mint-soft); color: var(--mint); }
+.seg button:disabled { cursor: default; }
 .hint { font-size: 13.5px; color: var(--muted); border-left: 2px solid var(--line); padding-left: 12px; }
 .hint b { color: var(--fg); }
 
 /* game */
-.stepper { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; margin-bottom: 18px; }
-.stepper div { font-size: 12px; text-align: center; padding-top: 8px; border-top: 3px solid var(--line-soft); color: var(--faint); font-weight: 500; }
+.stepper { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin-bottom: 18px; }
+.stepper div { font-size: 12px; text-align: center; padding-top: 8px; border-top: 3px solid var(--line-soft); color: var(--faint); font-weight: 500; word-break: keep-all; }
 .stepper div.done { border-color: rgba(63,227,191,.35); color: var(--muted); }
 .stepper div.on { border-color: var(--mint); color: var(--fg); font-weight: 700; }
 .table { display: grid; gap: 16px; grid-template-columns: 1fr; }
 @media (min-width: 860px) { .table { grid-template-columns: 330px minmax(0, 1fr); align-items: start; } }
-.rolecard { position: relative; border-radius: 18px; padding: 22px; min-height: 230px; display: flex; flex-direction: column; gap: 12px; border: 1px solid var(--line); background:
-  repeating-linear-gradient(135deg, rgba(255,255,255,.018) 0 10px, transparent 10px 20px), var(--raised); }
-.rolecard.citizen { border-color: rgba(63,227,191,.5); }
-.rolecard.liar { border-color: rgba(255,116,134,.55); background: repeating-linear-gradient(135deg, rgba(255,116,134,.04) 0 10px, transparent 10px 20px), var(--raised); }
-.rolecard .cat { font-size: 13px; color: var(--muted); }
+@media (max-width: 859px) {
+  .table > aside { display: contents; }
+  .table > aside > .rolecard { order: 1; }
+  .table > section { order: 2; }
+  .table > aside > .panel { order: 3; }
+}
+.rolecard { position: relative; border-radius: 18px; padding: 20px; display: flex; flex-direction: column; gap: 12px; border: 1px solid var(--line);
+  background: repeating-linear-gradient(135deg, rgba(255,255,255,.018) 0 10px, transparent 10px 20px), var(--raised); }
+.rolecard .cat { font-size: 13px; color: var(--muted); display: flex; justify-content: space-between; gap: 8px; }
 .rolecard .cat b { color: var(--fg); font-size: 15px; }
-.rolecard .word { font-family: var(--f-display); font-size: 40px; line-height: 1.1; color: var(--mint); overflow-wrap: anywhere; }
-.rolecard.liar .word { color: var(--liar); font-size: 30px; }
-.rolecard .seal { margin-top: auto; display: flex; justify-content: space-between; align-items: center; gap: 8px; font-family: var(--f-mono); font-size: 11px; color: var(--faint); }
-.rolecard .cover { flex: 1; display: grid; place-items: center; text-align: center; gap: 8px; border: 1px dashed var(--line); border-radius: 12px; padding: 18px; cursor: pointer; background: transparent; }
-.rolecard .cover:hover { border-color: var(--mint); }
-.roster { display: flex; flex-direction: column; gap: 6px; }
-.rp { display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 9px 10px; border-radius: 10px; }
+.secret { position: relative; min-height: 150px; border-radius: 12px; }
+.secret .inside { display: flex; flex-direction: column; gap: 8px; padding: 4px 2px; filter: blur(14px); opacity: 0; transition: opacity .15s, filter .15s; user-select: none; }
+.secret .veil { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; border: 1px dashed var(--line); border-radius: 12px; padding: 14px; color: var(--muted); font-size: 13.5px; background: var(--bg); transition: opacity .15s; }
+.secret .veil b { display: block; color: var(--fg); font-size: 15px; margin-bottom: 4px; }
+@media (hover: hover) { .secret:hover .inside { filter: none; opacity: 1; user-select: text; } .secret:hover .veil { opacity: 0; pointer-events: none; } }
+.rolecard.open .secret .inside { filter: none; opacity: 1; user-select: text; }
+.rolecard.open .secret .veil { opacity: 0; pointer-events: none; }
+.word { font-family: var(--f-display); font-size: 40px; line-height: 1.1; color: var(--mint); overflow-wrap: anywhere; }
+.inside.liar .word { color: var(--liar); font-size: 30px; }
+.inside.spy .word { color: var(--amber); }
+.spyline { font-size: 14px; padding: 8px 10px; border-radius: 9px; background: var(--amber-soft); color: var(--amber); }
+.spyline b { color: var(--fg); }
+.rolecard .foot { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-family: var(--f-mono); font-size: 11px; color: var(--faint); }
+.roster { display: flex; flex-direction: column; gap: 4px; }
+.rp { display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 8px 10px; border-radius: 10px; }
 .rp .no { font-family: var(--f-mono); font-size: 12px; color: var(--faint); text-align: center; }
 .rp .nm { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rp .st { font-size: 12px; color: var(--faint); }
 .rp.turn { background: var(--mint-soft); }
 .rp.turn .st { color: var(--mint); font-weight: 700; }
+.live { width: 7px; height: 7px; border-radius: 50%; background: var(--faint); display: inline-block; margin-right: 6px; vertical-align: middle; }
+.live.yes { background: var(--mint); }
 .status { display: flex; gap: 12px; align-items: flex-start; padding: 14px 16px; border-radius: 12px; background: var(--raised); }
-.status.mine { background: var(--mint-soft); border: 1px solid rgba(63,227,191,.4); }
+.status.mine { background: var(--mint-soft); border: 1px solid rgba(63,227,191,.4); display: block; }
 .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--mint); margin-top: 7px; flex: none; animation: pulse 1.4s ease-in-out infinite; }
 @keyframes pulse { 50% { opacity: .3; } }
-@media (prefers-reduced-motion: reduce) { .dot { animation: none; } .btn { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .dot { animation: none; } .btn, .secret .inside, .secret .veil { transition: none; } }
 .log { display: flex; flex-direction: column; gap: 16px; }
 .round h3 { margin-bottom: 8px; color: var(--muted); font-size: 13px; }
 .lines { display: flex; flex-direction: column; gap: 6px; }
-.line { display: grid; grid-template-columns: 26px 72px minmax(0, 1fr); gap: 10px; align-items: baseline; padding: 9px 12px; border-radius: 10px; background: var(--bg); border: 1px solid var(--line-soft); }
+.line { display: grid; grid-template-columns: 24px 76px minmax(0, 1fr); gap: 10px; align-items: baseline; padding: 9px 12px; border-radius: 10px; background: var(--bg); border: 1px solid var(--line-soft); }
 .line .no { font-family: var(--f-mono); font-size: 12px; color: var(--faint); }
 .line .who { font-weight: 700; font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .line .txt { overflow-wrap: anywhere; }
@@ -132,69 +161,74 @@ input.code { font-family: var(--f-mono); letter-spacing: .35em; text-transform: 
 .compose input { flex: 1 1 220px; min-width: 0; }
 .count { font-family: var(--f-mono); font-size: 12px; color: var(--faint); }
 .picks { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
-.pick { text-align: left; padding: 14px; border-radius: 12px; border: 1px solid var(--line); background: var(--bg); cursor: pointer; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.pick { text-align: left; padding: 13px 14px; border-radius: 12px; border: 1px solid var(--line); background: var(--bg); cursor: pointer; display: flex; flex-direction: column; gap: 2px; min-width: 0; min-height: 46px; }
 .pick .no { font-family: var(--f-mono); font-size: 11px; color: var(--faint); }
 .pick b { overflow-wrap: anywhere; }
 .pick[aria-pressed=true] { border-color: var(--mint); background: var(--mint-soft); }
-.pick:disabled { opacity: .45; cursor: not-allowed; }
-.words { grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); }
+.words { grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); }
+.progress { font-family: var(--f-mono); font-size: 13px; color: var(--amber); }
 .tally { display: flex; flex-direction: column; gap: 6px; }
 .bar { display: grid; grid-template-columns: 90px minmax(0, 1fr) 28px; gap: 10px; align-items: center; font-size: 14px; }
 .bar .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bar .track { height: 10px; border-radius: 6px; background: var(--bg); overflow: hidden; }
-.bar .fill { height: 100%; background: var(--mint); border-radius: 6px; }
-.bar.sus .fill { background: var(--liar); }
+.bar .fill { display: block; height: 100%; background: var(--mint); border-radius: 6px; }
+.bar.sus .fill { background: var(--amber); }
 .bar .v { font-family: var(--f-mono); text-align: right; font-variant-numeric: tabular-nums; }
 .verdict { padding: 22px; border-radius: 16px; text-align: center; display: flex; flex-direction: column; gap: 6px; }
 .verdict.citizen { background: var(--mint-soft); border: 1px solid rgba(63,227,191,.45); }
-.verdict.liar { background: var(--liar-soft); border: 1px solid rgba(255,116,134,.5); }
-.verdict .big { font-family: var(--f-display); font-size: clamp(30px, 6vw, 40px); }
+.verdict.liar, .verdict.fool { background: var(--liar-soft); border: 1px solid rgba(255,116,134,.5); }
+.verdict .big { font-family: var(--f-display); font-size: clamp(28px, 6vw, 40px); }
 .verdict.citizen .big { color: var(--mint); }
-.verdict.liar .big { color: var(--liar); }
+.verdict.liar .big, .verdict.fool .big { color: var(--liar); }
 .reveal { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 @media (min-width: 640px) { .reveal { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
-.reveal .seat .role { font-size: 13px; font-weight: 700; color: var(--mint); }
-.reveal .seat.isliar { border-color: rgba(255,116,134,.6); }
-.reveal .seat.isliar .role { color: var(--liar); }
+.reveal .seat { min-height: 0; }
+.reveal .role { font-size: 13px; font-weight: 700; color: var(--mint); }
+.reveal .seat.r-liar { border-color: rgba(255,116,134,.6); } .reveal .seat.r-liar .role { color: var(--liar); }
+.reveal .seat.r-spy { border-color: rgba(242,180,91,.6); } .reveal .seat.r-spy .role { color: var(--amber); }
+.reveal .seat.r-fool { border-color: rgba(255,116,134,.6); } .reveal .seat.r-fool .role { color: var(--liar); }
 .reveal .seat small { color: var(--muted); font-size: 12px; }
-.warn { color: var(--warn); font-size: 14px; }
 .toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(18px + env(safe-area-inset-bottom, 0px)); max-width: min(560px, calc(100% - 32px)); width: max-content; background: var(--raised); border: 1px solid var(--liar); color: var(--fg); padding: 12px 14px 12px 16px; border-radius: 12px; display: flex; gap: 12px; align-items: center; box-shadow: 0 10px 30px rgba(0,0,0,.4); z-index: 10; }
 .toast.info { border-color: var(--mint); }
 .toast button { background: none; border: 0; color: var(--muted); cursor: pointer; font-weight: 700; padding: 4px; }
 .center { min-height: 50vh; display: grid; place-items: center; text-align: center; }
-footer.foot { margin-top: 28px; font-size: 12px; color: var(--faint); text-align: center; }
+.conn { font-size: 12px; color: var(--amber); }
 
-.rp .on { width: 7px; height: 7px; border-radius: 50%; background: var(--faint); display: inline-block; margin-right: 6px; vertical-align: middle; }
-.rp .on.yes { background: var(--mint); }
-.conn { font-size: 12px; color: var(--warn); }
-.stepper div { word-break: keep-all; }
-@media (max-width: 859px) {
-  .table > aside { display: contents; }
-  .table > aside > .rolecard { order: 1; }
-  .table > section { order: 2; }
-  .table > aside > .panel { order: 3; }
-}
+/* credit */
+footer.credit { margin-top: 36px; padding: 22px 16px 26px; border-top: 1px solid var(--line-soft); display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center; }
+.badge { display: inline-flex; align-items: center; gap: 12px; padding: 12px 22px; border: 2px solid var(--mint); border-radius: 999px; background: var(--mint-soft); }
+.badge .by { font-size: 13px; font-weight: 700; letter-spacing: .2em; color: var(--muted); }
+.badge .name { font-family: var(--f-mono); font-size: 20px; font-weight: 700; letter-spacing: .14em; color: var(--mint); }
+footer.credit p { font-size: 12.5px; color: var(--faint); }
 </style>
 </head>
 <body>
 <div class="wrap">
   <header class="top">
-    <div class="brand"><div class="mark" aria-hidden="true">L</div><b>라이어 테이블</b></div>
-    <div id="hdr"></div>
+    <div class="brand"><div class="mark" aria-hidden="true">L</div><b>라이어게임</b></div>
+    <div id="hdr" class="row"></div>
   </header>
   <main id="app" aria-live="polite">
-    <div class="center"><div class="stack"><h2>테이블 준비 중</h2><p class="muted">서버에 연결하고 있어요. 처음 접속이면 30초쯤 걸릴 수 있어요.</p></div></div>
+    <div class="center"><div class="stack"><h2>라이어게임 준비 중</h2><p class="muted">서버에 연결하고 있어요. 처음 접속이면 30초쯤 걸릴 수 있어요.</p></div></div>
   </main>
-  <footer class="foot">4인 전용 · 역할과 제시어는 서버가 본인에게만 보내요</footer>
 </div>
+<footer class="credit">
+  <div class="badge" aria-label="제작자 KIMJIHUN"><span class="by">MADE BY</span><span class="name">KIMJIHUN</span></div>
+  <p>라이어게임 · 역할과 제시어는 서버가 본인에게만 보내요</p>
+</footer>
 <div id="toast"></div>
 <script>
 (function () {
   'use strict';
   const $app = document.getElementById('app'), $hdr = document.getElementById('hdr'), $toast = document.getElementById('toast');
   const ls = { get(k) { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } }, set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }, del(k) { try { localStorage.removeItem(k); } catch (e) {} } };
+  const MODES = {
+    normal: { name: '노멀모드', min: 4, desc: '라이어 1명만 제시어를 몰라요. 들키지 않거나, 걸려도 제시어를 맞히면 라이어 승리.' },
+    fool: { name: '바보모드', min: 4, desc: '바보 1명은 비슷하지만 다른 제시어를 받아요. 본인은 자기가 바보인 줄 몰라요.' },
+    spy: { name: '스파이모드', min: 5, desc: '스파이는 제시어와 라이어를 알고 라이어를 몰래 도와요. 라이어·스파이가 한 팀.' },
+  };
   const S = { token: ls.get('liar.token'), view: null, error: null, notice: null, busy: false, connected: false, loading: !!ls.get('liar.token') };
-  const ui = { cardShown: false, cardKey: '', votePick: null, guessPick: null, copied: false };
+  const ui = { mode: MODES[ls.get('liar.mode')] ? ls.get('liar.mode') : 'normal', cardOpen: false, cardKey: '', votePick: null, guessPick: null, copied: false, abort: false };
   let es = null, lastHtml = '', raf = 0;
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const queue = () => { if (!raf) raf = requestAnimationFrame(() => { raf = 0; render(); }); };
@@ -217,7 +251,6 @@ footer.foot { margin-top: 28px; font-size: 12px; color: var(--faint); text-align
     es.onopen = () => { S.connected = true; queue(); };
     es.onerror = async () => {
       S.connected = false; queue();
-      // 토큰이 무효해졌는지 확인 (방 삭제 등)
       try {
         const r = await fetch('/api/action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: S.token, type: 'ping' }) });
         if (r.status === 401 || r.status === 410) { const j = await r.json().catch(() => ({})); forget(); S.notice = j.error || '방에서 나왔어요.'; queue(); }
@@ -238,7 +271,7 @@ footer.foot { margin-top: 28px; font-size: 12px; color: var(--faint); text-align
     else if (!S.token || !V) html = homeView();
     else if (V.status !== 'play') html = lobbyView(V);
     else html = gameView(V);
-    $hdr.innerHTML = V && S.token ? '<span class="chip">방 코드 <strong>' + esc(V.code) + '</strong></span>' + (S.connected ? '' : ' <span class="conn">재연결 중…</span>') : '';
+    $hdr.innerHTML = V && S.token ? '<span class="chip mode">' + esc(MODES[V.mode].name) + '</span><span class="chip">방 코드 <strong>' + esc(V.code) + '</strong></span>' + (S.connected ? '' : '<span class="conn">재연결 중…</span>') : '';
     if (html !== lastHtml) {
       const keep = {};
       ['nick', 'code', 'desc'].forEach(id => { const el = document.getElementById(id); if (el) keep[id] = { v: el.value, f: document.activeElement === el, s: el.selectionStart }; });
@@ -254,67 +287,69 @@ footer.foot { margin-top: 28px; font-size: 12px; color: var(--faint); text-align
 
   function homeView() {
     const pre = (location.hash.match(/^#([A-Za-z0-9]{5})$/) || [])[1] || '';
+    const cards = Object.keys(MODES).map(k => '<button type="button" class="modecard" role="radio" data-act="pickmode" data-mode="' + k + '" aria-checked="' + (ui.mode === k) + '">' +
+      '<span class="radio" aria-hidden="true"></span><b>' + MODES[k].name + '</b><span class="min">' + MODES[k].min + '~8명</span><p>' + MODES[k].desc + '</p></button>').join('');
     return '<div class="home">' +
-      '<section class="hero"><span class="label">4인 온라인 추리 게임</span>' +
-      '<h1>네 명 중 한 명은<br><em>제시어를 모릅니다</em></h1>' +
-      '<p class="muted">방을 만들고 초대 코드를 친구 세 명에게 보내세요. 각자 휴대폰이나 PC에서 들어오면 바로 시작할 수 있어요.</p>' +
-      '<ol class="steps">' +
-      '<li><span class="n">1</span><div><b>역할 받기</b><span>시민 3명은 같은 제시어를, 라이어 1명은 카테고리만 받아요.</span></div></li>' +
-      '<li><span class="n">2</span><div><b>두 바퀴 설명</b><span>1번부터 4번까지 차례로 한 줄씩, 두 바퀴 돌아요.</span></div></li>' +
-      '<li><span class="n">3</span><div><b>비밀 투표</b><span>모두 투표를 마칠 때까지 누가 누구를 찍었는지 안 보여요.</span></div></li>' +
-      '<li><span class="n">4</span><div><b>최종 판정</b><span>라이어가 지목되면 제시어를 맞힐 마지막 기회가 있어요.</span></div></li>' +
-      '</ol></section>' +
+      '<section class="hero"><span class="label">실시간 온라인 추리 게임</span>' +
+      '<h1>라이어게임<br><em>누가 거짓말을 할까?</em></h1>' +
+      '<p class="muted">방을 만들고 초대 링크를 보내세요. 4~8명이 각자 휴대폰이나 PC로 들어오면 바로 시작할 수 있어요. 순서대로 두 바퀴 설명한 뒤 비밀 투표로 범인을 찾아요.</p>' +
+      '<div class="label" style="margin-top:6px">모드 선택</div><div class="modes" role="radiogroup" aria-label="게임 모드">' + cards + '</div></section>' +
       '<section class="panel stack">' +
       '<div class="field"><label for="nick">닉네임 (10자 이하)</label><input type="text" id="nick" maxlength="10" placeholder="예: 지훈" value="' + esc(ls.get('liar.nick')) + '" autocomplete="nickname"></div>' +
-      '<button class="btn primary block" type="button" data-act="create"' + (S.busy ? ' disabled' : '') + '>새 방 만들기</button>' +
+      '<button class="btn primary block" type="button" data-act="create"' + (S.busy ? ' disabled' : '') + '>' + MODES[ui.mode].name + '로 새 방 만들기</button>' +
       '<div class="or">또는 초대받은 방에 참가</div>' +
       '<div class="field"><label for="code">초대 코드 5자리</label><input type="text" id="code" class="code" maxlength="5" placeholder="ABCDE" value="' + esc(pre) + '" autocomplete="off" autocapitalize="characters"></div>' +
       '<button class="btn block" type="button" data-act="join"' + (S.busy ? ' disabled' : '') + '>코드로 참가하기</button>' +
+      '<p class="hint">참가하는 사람은 모드를 고를 필요 없어요. 방장이 고른 모드로 함께 플레이해요.</p>' +
       '</section></div>';
   }
 
   function lobbyView(V) {
-    const isHost = V.host === V.me, n = V.players.length, full = n === 4;
+    const isHost = V.host === V.me, n = V.players.length, min = V.modes[V.mode].min, ok = n >= min;
     let seats = '';
-    for (let i = 0; i < 4; i++) {
+    const slots = Math.max(min, Math.min(V.maxPlayers, n < 8 ? n + 1 : 8));
+    for (let i = 0; i < slots; i++) {
       const p = V.players[i];
       if (!p) { seats += '<div class="seat empty"><span class="no">' + (i + 1) + '번 자리</span><span>빈 자리</span></div>'; continue; }
       seats += '<div class="seat"><span class="no">' + (i + 1) + '번 자리' + (p.online ? '' : ' · 접속 끊김') + '</span><span class="nm">' + esc(p.nick) + '</span><span>' +
         (i === V.host ? '<span class="tag">방장</span>' : '') + (i === V.me ? '<span class="tag me">나</span>' : '') + '</span></div>';
     }
     const link = location.origin + '/#' + V.code;
+    const seg = '<div class="seg" role="group" aria-label="게임 모드">' + Object.keys(MODES).map(k => '<button type="button" data-act="setmode" data-mode="' + k + '" aria-pressed="' + (V.mode === k) + '"' + (isHost && !S.busy ? '' : ' disabled') + '>' + MODES[k].name + ' · ' + MODES[k].min + '명+</button>').join('') + '</div>';
     return '<div class="stack" style="gap:18px">' +
-      '<div class="row" style="justify-content:space-between"><div><span class="label">대기실</span><h2>' + n + ' / 4명 입장</h2></div>' +
+      '<div class="row" style="justify-content:space-between"><div><span class="label">대기실</span><h2>' + n + ' / ' + V.maxPlayers + '명 입장 · 시작 가능 ' + min + '명 이상</h2></div>' +
       '<button class="btn ghost" type="button" data-act="leave"' + (S.busy ? ' disabled' : '') + '>방 나가기</button></div>' +
       '<div class="codebox"><div style="min-width:0"><div class="label">초대 코드</div><div class="code-big">' + esc(V.code) + '</div><div class="muted" style="font-size:13px;overflow-wrap:anywhere">' + esc(link) + '</div></div>' +
       '<button class="btn" type="button" data-act="copy">' + (ui.copied ? '복사했어요' : '초대 링크 복사') + '</button></div>' +
+      '<div class="stack" style="gap:8px"><div class="label">게임 모드' + (isHost ? ' (방장만 바꿀 수 있어요)' : '') + '</div>' + seg + '<p class="muted" style="font-size:13.5px">' + esc(MODES[V.mode].desc) + '</p></div>' +
       '<div class="seats">' + seats + '</div>' +
       (isHost
-        ? '<button class="btn primary block" type="button" data-act="start"' + (full && !S.busy ? '' : ' disabled') + '>' + (full ? '게임 시작' : (4 - n) + '명 더 들어오면 시작할 수 있어요') + '</button>'
-        : '<div class="status"><span class="dot"></span><p>' + (full ? '방장이 게임을 시작하기를 기다리고 있어요.' : '나머지 ' + (4 - n) + '명이 들어오기를 기다리고 있어요.') + '</p></div>') +
-      '<p class="hint"><b>친구 초대</b> · 초대 링크를 카카오톡 등으로 보내면 코드가 자동으로 채워져요.</p>' +
+        ? '<button class="btn primary block" type="button" data-act="start"' + (ok && !S.busy ? '' : ' disabled') + '>' + (ok ? n + '명으로 ' + MODES[V.mode].name + ' 시작' : MODES[V.mode].name + '는 ' + min + '명부터 시작할 수 있어요 · ' + (min - n) + '명 더 필요') + '</button>'
+        : '<div class="status"><span class="dot"></span><p>' + (ok ? '방장이 게임을 시작하기를 기다리고 있어요.' : MODES[V.mode].name + '는 ' + min + '명부터 시작해요. ' + (min - n) + '명이 더 들어와야 해요.') + '</p></div>') +
+      '<p class="hint"><b>친구 초대</b> · 초대 링크를 카카오톡 등으로 보내면 코드가 자동으로 채워져요. 게임이 시작되면 새로 들어올 수 없어요.</p>' +
       '</div>';
   }
 
-  const STEPS = ['역할 배정', '설명 1라운드', '설명 2라운드', '비밀 투표', '최종 판정'];
-  function stepOf(V) { return V.phase === 'desc' ? 1 + V.round : V.phase === 'vote' ? 3 : 4; }
+  const STEPS = ['설명 1라운드', '설명 2라운드', '비밀 투표', '최종 판정'];
+  const stepOf = V => (V.phase === 'desc' ? V.round : V.phase === 'vote' ? 2 : 3);
 
   function gameView(V) {
-    const step = stepOf(V);
-    const key = V.code + V.n;
-    if (ui.cardKey !== key) { ui.cardKey = key; ui.cardShown = false; ui.votePick = null; ui.guessPick = null; }
+    const step = stepOf(V), key = V.code + V.n;
+    if (ui.cardKey !== key) { ui.cardKey = key; ui.cardOpen = false; ui.votePick = null; ui.guessPick = null; }
     const stepper = '<div class="stepper" role="list">' + STEPS.map((s, i) => '<div role="listitem" class="' + (i < step || V.phase === 'end' ? 'done' : i === step ? 'on' : '') + '">' + s + '</div>').join('') + '</div>';
     return stepper + '<div class="table"><aside class="stack">' + roleCard(V) + roster(V) + '</aside><section class="panel stack" style="gap:18px">' + mainPanel(V) + '</section></div>';
   }
 
   function roleCard(V) {
-    const card = V.card, catLine = '<div class="cat">카테고리 · <b>' + esc(V.category) + '</b></div>';
-    const foot = '<span>' + (V.me + 1) + '번 자리 · ' + V.n + '번째 판</span>';
-    if (!ui.cardShown) return '<div class="rolecard">' + catLine + '<button type="button" class="cover" data-act="showcard"><div><h3>내 카드 확인하기</h3><p class="muted" style="font-size:13px;margin-top:6px">다른 사람이 화면을 보지 않을 때 누르세요</p></div></button><div class="seal">' + foot + '</div></div>';
-    const body = card.liar
-      ? '<span class="label" style="color:var(--liar)">당신의 역할</span><div class="word">당신은 라이어입니다.</div><p class="muted" style="font-size:13.5px">제시어는 모르고 카테고리만 알아요. 시민인 척 설명하세요.</p>'
-      : '<span class="label">시민 · 제시어</span><div class="word">' + esc(card.word) + '</div><p class="muted" style="font-size:13.5px">제시어를 직접 말하지 않고 설명하세요.</p>';
-    return '<div class="rolecard ' + (card.liar ? 'liar' : 'citizen') + '">' + catLine + body + '<div class="seal">' + foot + '<button type="button" class="btn ghost" style="padding:6px 10px;font-size:12px" data-act="hidecard">가리기</button></div></div>';
+    const c = V.card;
+    let inside;
+    if (c.role === 'liar') inside = '<div class="inside liar"><span class="label" style="color:var(--liar)">내 역할 · 라이어</span><div class="word">당신은 라이어입니다.</div><p class="muted" style="font-size:13.5px">제시어를 몰라요. 카테고리만 보고 시민인 척 설명하세요.</p></div>';
+    else if (c.role === 'spy') inside = '<div class="inside spy"><span class="label" style="color:var(--amber)">내 역할 · 스파이</span><div class="word">' + esc(c.word) + '</div><div class="spyline">라이어는 <b>' + esc(nick(V, c.liar)) + '</b>님이에요.</div><p class="muted" style="font-size:13.5px">시민인 척하면서 라이어가 걸리지 않게 도와주세요.</p></div>';
+    else inside = '<div class="inside"><span class="label">내 역할 · 시민</span><div class="word">' + esc(c.word) + '</div><p class="muted" style="font-size:13.5px">제시어를 직접 말하지 않고 설명하세요.</p></div>';
+    return '<div class="rolecard' + (ui.cardOpen ? ' open' : '') + '">' +
+      '<div class="cat"><span>카테고리 · <b>' + esc(V.category) + '</b></span><span>' + V.size + '명</span></div>' +
+      '<div class="secret">' + inside + '<div class="veil" aria-hidden="' + ui.cardOpen + '"><div><b>내 역할과 제시어</b><span>PC는 마우스를 올리면, 휴대폰은 아래 역할 확인 버튼을 누르면 보여요</span></div></div></div>' +
+      '<div class="foot"><span>' + (V.me + 1) + '번 자리 · ' + V.n + '번째 판</span><button type="button" class="btn small" data-act="togglecard" aria-pressed="' + ui.cardOpen + '">' + (ui.cardOpen ? '다시 가리기' : '역할 확인') + '</button></div></div>';
   }
 
   function roster(V) {
@@ -322,23 +357,22 @@ footer.foot { margin-top: 28px; font-size: 12px; color: var(--faint); text-align
       let st = '';
       if (V.phase === 'desc') st = i === V.turnSeat ? '설명 차례' : '';
       else if (V.phase === 'vote') st = V.voted[i] ? '투표 완료' : '투표 중';
-      else if (V.phase === 'claim') st = i === V.suspect ? '지목됨' : '';
-      const turn = (V.phase === 'desc' && i === V.turnSeat) || (V.phase === 'claim' && i === V.suspect);
-      return '<div class="rp' + (turn ? ' turn' : '') + '"><span class="no">' + (i + 1) + '</span><span class="nm"><span class="on' + (p.online ? ' yes' : '') + '" title="' + (p.online ? '접속 중' : '접속 끊김') + '"></span>' + esc(p.nick) + (i === V.me ? ' <span class="tag me">나</span>' : '') + '</span><span class="st">' + st + '</span></div>';
+      else if (V.phase === 'guess') st = i === V.suspect ? '지목됨' : '';
+      const turn = (V.phase === 'desc' && i === V.turnSeat) || (V.phase === 'guess' && i === V.suspect);
+      return '<div class="rp' + (turn ? ' turn' : '') + '"><span class="no">' + (i + 1) + '</span><span class="nm"><span class="live' + (p.online ? ' yes' : '') + '" title="' + (p.online ? '접속 중' : '접속 끊김') + '"></span>' + esc(p.nick) + (i === V.me ? ' <span class="tag me">나</span>' : '') + '</span><span class="st">' + st + '</span></div>';
     }).join('');
-    const stop = V.host === V.me && V.phase !== 'end' ? '<button class="btn ghost" type="button" data-act="abort" style="margin:8px 10px 4px;padding:8px 12px;font-size:13px">게임 중단하고 대기실로</button>' : '';
-    return '<div class="panel" style="padding:12px"><div class="label" style="padding:4px 10px 8px">좌석 순서</div><div class="roster">' + rows + '</div>' + stop + '</div>';
+    const stop = V.host === V.me && V.phase !== 'end' ? '<button class="btn ghost small" type="button" data-act="abort" style="margin:8px 10px 4px">' + (ui.abort ? '한 번 더 누르면 중단돼요' : '게임 중단하고 대기실로') + '</button>' : '';
+    return '<div class="panel" style="padding:12px"><div class="label" style="padding:4px 10px 8px">설명 순서</div><div class="roster">' + rows + '</div>' + stop + '</div>';
   }
 
-  function waitBox(text, mine) { return '<div class="status' + (mine ? ' mine' : '') + '"><span class="dot"></span><p>' + text + '</p></div>'; }
+  const waitBox = text => '<div class="status"><span class="dot"></span><p>' + text + '</p></div>';
 
   function descLog(V) {
     let out = '<div class="log">';
     for (let r = 0; r < 2; r++) {
       out += '<div class="round"><h3>' + (r + 1) + '라운드</h3><div class="lines">';
-      for (let s = 0; s < 4; s++) {
-        const k = r * 4 + s, d = V.desc[k];
-        const now = V.phase === 'desc' && V.turn === k;
+      for (let s = 0; s < V.size; s++) {
+        const k = r * V.size + s, d = V.desc[k], now = V.phase === 'desc' && V.turn === k;
         const txt = d ? esc(d.text) : now ? '작성 중…' : '차례 대기';
         out += '<div class="line' + (d ? '' : ' pending') + (now ? ' now' : '') + '"><span class="no">' + (s + 1) + '</span><span class="who">' + esc(nick(V, s)) + '</span><span class="txt">' + txt + '</span></div>';
       }
@@ -351,15 +385,15 @@ footer.foot { margin-top: 28px; font-size: 12px; color: var(--faint); text-align
     const busy = S.busy ? ' disabled' : '';
     if (V.phase === 'desc') {
       const mine = V.turnSeat === V.me;
-      let top = '<div><span class="label">' + (V.round + 1) + '라운드 · ' + (V.turnSeat + 1) + '번 차례</span><h2>' + (mine ? '내 차례예요. 한 줄로 설명하세요' : esc(nick(V, V.turnSeat)) + '님이 설명하고 있어요') + '</h2></div>';
-      if (mine) top += '<div class="stack" style="gap:8px"><div class="compose"><input type="text" id="desc" maxlength="' + V.maxDesc + '" placeholder="' + (V.card.liar ? '시민인 척, 들키지 않게' : '제시어를 직접 말하지 않고') + '" autocomplete="off" enterkeyhint="send">' +
+      let top = '<div><span class="label">' + (V.round + 1) + '라운드 · ' + (V.turnSeat + 1) + '번 차례 · 전체 ' + (V.turn + 1) + ' / ' + (V.size * 2) + '</span><h2>' + (mine ? '내 차례예요. 한 줄로 설명하세요' : esc(nick(V, V.turnSeat)) + '님이 설명하고 있어요') + '</h2></div>';
+      if (mine) top += '<div class="stack" style="gap:8px"><div class="compose"><input type="text" id="desc" maxlength="' + V.maxDesc + '" placeholder="' + (V.card.role === 'liar' ? '시민인 척, 들키지 않게' : '제시어를 직접 말하지 않고') + '" autocomplete="off" enterkeyhint="send">' +
         '<button class="btn primary" type="button" data-act="describe"' + busy + '>제출</button></div><span class="count" id="desc-count">0 / ' + V.maxDesc + '</span></div>';
       return top + descLog(V);
     }
     if (V.phase === 'vote') {
-      const voted = V.myVote !== null;
-      const left = [0, 1, 2, 3].filter(i => !V.voted[i]);
-      let h = '<div><span class="label">비밀 투표</span><h2>' + (voted ? esc(nick(V, V.myVote)) + '님에게 투표했어요' : '라이어라고 생각하는 사람을 고르세요') + '</h2></div>';
+      const voted = V.myVote !== null, done = V.voted.filter(Boolean).length;
+      const left = V.voted.map((x, i) => (x ? -1 : i)).filter(i => i >= 0);
+      let h = '<div class="row" style="justify-content:space-between"><div><span class="label">비밀 투표</span><h2>' + (voted ? esc(nick(V, V.myVote)) + '님에게 투표했어요' : '의심 가는 사람을 한 명 고르세요') + '</h2></div><span class="progress">투표 완료 ' + done + ' / ' + V.size + '</span></div>';
       if (!voted) {
         h += '<div class="picks">' + V.players.map((p, i) => i === V.me ? '' :
           '<button type="button" class="pick" data-act="pickvote" data-i="' + i + '" aria-pressed="' + (ui.votePick === i) + '"><span class="no">' + (i + 1) + '번</span><b>' + esc(p.nick) + '</b></button>').join('') + '</div>' +
@@ -367,13 +401,14 @@ footer.foot { margin-top: 28px; font-size: 12px; color: var(--faint); text-align
       } else h += waitBox('남은 사람: ' + esc(names(V, left)) + '. 모두 투표하면 결과가 한꺼번에 공개돼요.');
       return h + descLog(V);
     }
-    if (V.phase === 'claim') {
+    if (V.phase === 'guess') {
       let h = '<div><span class="label">최종 판정</span><h2>' + esc(nick(V, V.suspect)) + '님이 지목됐어요</h2></div>' + tallyView(V);
-      if (V.words) {
-        h += '<div class="status mine" style="display:block"><b>마지막 기회예요.</b> 제시어를 맞히면 라이어가 이겨요. 카테고리 <b>' + esc(V.category) + '</b>에서 하나를 고르세요.</div>' +
-          '<div class="picks words">' + V.words.map((w, i) => '<button type="button" class="pick" data-act="pickguess" data-i="' + i + '" aria-pressed="' + (ui.guessPick === i) + '"><b>' + esc(w) + '</b></button>').join('') + '</div>' +
-          '<button class="btn primary block" type="button" data-act="guess"' + (ui.guessPick === null || S.busy ? ' disabled' : '') + '>' + (ui.guessPick === null ? '제시어를 골라 주세요' : '"' + esc(V.words[ui.guessPick]) + '"(으)로 정답 제출') + '</button>';
-      } else h += waitBox(esc(nick(V, V.suspect)) + '님이 진짜 라이어였어요! 지금 제시어를 맞힐 마지막 기회를 쓰고 있어요.');
+      if (V.guessWords) {
+        const who = V.mode === 'fool' ? '당신은 사실 <b>바보</b>였어요! 다른 사람들은 다른 제시어를 받았어요. 시민들의 진짜 제시어를 맞히면 역전승이에요.' : '마지막 기회예요. 제시어를 맞히면 라이어 쪽이 이겨요.';
+        h += '<div class="status mine">' + who + ' 카테고리 <b>' + esc(V.category) + '</b>에서 하나를 고르세요.</div>' +
+          '<div class="picks words">' + V.guessWords.map((w, i) => '<button type="button" class="pick" data-act="pickguess" data-i="' + i + '" aria-pressed="' + (ui.guessPick === i) + '"><b>' + esc(w) + '</b></button>').join('') + '</div>' +
+          '<button class="btn primary block" type="button" data-act="guess"' + (ui.guessPick === null || S.busy ? ' disabled' : '') + '>' + (ui.guessPick === null ? '제시어를 골라 주세요' : '"' + esc(V.guessWords[ui.guessPick]) + '"(으)로 정답 제출') + '</button>';
+      } else h += waitBox(esc(nick(V, V.suspect)) + '님이 마지막으로 정답을 맞히는 중이에요. 맞히면 판이 뒤집혀요.');
       return h;
     }
     return endView(V);
@@ -381,23 +416,26 @@ footer.foot { margin-top: 28px; font-size: 12px; color: var(--faint); text-align
 
   function tallyView(V) {
     const max = Math.max(1, ...V.tally);
-    return '<div class="tally">' + V.players.map((p, i) => '<div class="bar' + (i === V.suspect ? ' sus' : '') + '"><span class="nm">' + esc(p.nick) + '</span><span class="track"><span class="fill" style="display:block;width:' + (V.tally[i] / max * 100) + '%"></span></span><span class="v">' + V.tally[i] + '</span></div>').join('') + '</div>' +
-      (V.ties.length > 1 ? '<p class="muted" style="font-size:13px">' + esc(names(V, V.ties)) + ' 동률이라 무작위로 한 명을 골랐어요.</p>' : '');
+    return '<div class="tally">' + V.players.map((p, i) => '<div class="bar' + (i === V.suspect ? ' sus' : '') + '"><span class="nm">' + esc(p.nick) + '</span><span class="track"><span class="fill" style="width:' + (V.tally[i] / max * 100) + '%"></span></span><span class="v">' + V.tally[i] + '</span></div>').join('') + '</div>' +
+      (V.ties.length > 1 ? '<p class="muted" style="font-size:13px">' + esc(names(V, V.ties)) + ' 동점이라 무작위로 한 명을 골랐어요.</p>' : '');
   }
 
+  const ROLE_NAME = { citizen: '시민', liar: '라이어', spy: '스파이', fool: '바보' };
   function endView(V) {
-    const R = V.result;
-    const myWin = (R.winner === 'liar') === (V.me === R.liar);
-    let h = '<div class="verdict ' + R.winner + '"><span class="label">' + (myWin ? '승리했어요' : '아쉽게 졌어요') + '</span><div class="big">' + (R.winner === 'liar' ? '라이어 승리' : '시민 승리') + '</div><p class="muted">' + esc(R.reason) + '</p></div>';
-    h += '<div class="row" style="justify-content:space-between"><div><span class="label">제시어</span><h2>' + esc(V.category) + ' · ' + esc(R.word) + '</h2></div>' +
-      (R.guess !== null ? '<p class="muted">라이어의 추측: <b style="color:var(--fg)">' + esc(R.guess) + '</b></p>' : '') + '</div>';
+    const R = V.result, myRole = R.roles[V.me];
+    const team = r => (r === 'citizen' ? 'citizen' : r === 'fool' ? 'fool' : 'liar');
+    const myWin = team(myRole) === R.winner;
+    let h = '<div class="verdict ' + R.winner + '"><span class="label">' + (myWin ? '승리했어요' : '아쉽게 졌어요') + ' · 내 역할은 ' + ROLE_NAME[myRole] + '</span><div class="big">' + esc(R.label) + '</div><p class="muted">' + esc(R.reason) + '</p></div>';
+    h += '<div class="row" style="justify-content:space-between"><div><span class="label">정답 제시어</span><h2>' + esc(V.category) + ' · ' + esc(R.word) + '</h2>' + (R.foolWord ? '<p class="muted">바보의 제시어: <b style="color:var(--fg)">' + esc(R.foolWord) + '</b></p>' : '') + '</div>' +
+      (R.guess !== null ? '<p class="muted">마지막 추측: <b style="color:var(--fg)">' + esc(R.guess) + '</b></p>' : '') + '</div>';
     h += '<div class="reveal">' + V.players.map((p, i) => {
-      const isL = i === R.liar;
-      return '<div class="seat' + (isL ? ' isliar' : '') + '"><span class="no">' + (i + 1) + '번</span><span class="nm">' + esc(p.nick) + '</span><span class="role">' + (isL ? '라이어' : '시민') + (i === V.suspect ? ' · 지목됨' : '') + '</span><small>투표 → ' + esc(nick(V, R.votes[i])) + '</small></div>';
+      const r = R.roles[i];
+      return '<div class="seat r-' + r + '"><span class="no">' + (i + 1) + '번</span><span class="nm">' + esc(p.nick) + '</span><span class="role">' + ROLE_NAME[r] + (i === V.suspect ? ' · 지목됨' : '') + '</span><small>' + (R.words[i] ? '제시어 ' + esc(R.words[i]) : '제시어 없음') + '</small><small>투표 → ' + esc(nick(V, R.votes[i])) + '</small></div>';
     }).join('') + '</div>';
     h += tallyView(V);
+    const ok = V.players.length >= V.modes[V.mode].min;
     h += V.host === V.me
-      ? '<div class="row"><button class="btn primary" type="button" data-act="restart"' + (S.busy || V.players.length !== 4 ? ' disabled' : '') + '>같은 멤버로 다시 하기</button><button class="btn ghost" type="button" data-act="lobby"' + (S.busy ? ' disabled' : '') + '>대기실로</button></div>'
+      ? '<div class="row"><button class="btn primary" type="button" data-act="restart"' + (S.busy || !ok ? ' disabled' : '') + '>같은 멤버로 다시 하기</button><button class="btn ghost" type="button" data-act="lobby"' + (S.busy ? ' disabled' : '') + '>대기실로 (모드 변경·인원 추가)</button></div>'
       : '<div class="row"><p class="muted" style="flex:1">방장이 다시 시작하면 새 판이 열려요.</p><button class="btn ghost" type="button" data-act="lobby"' + (S.busy ? ' disabled' : '') + '>대기실로</button></div>';
     return h + descLog(V);
   }
@@ -424,20 +462,23 @@ footer.foot { margin-top: 28px; font-size: 12px; color: var(--faint); text-align
   }
   async function doAct(a, el) {
     switch (a) {
-      case 'create': return enter('/api/create', { nick: val('nick') });
+      case 'pickmode': ui.mode = el.dataset.mode; ls.set('liar.mode', ui.mode); return queue();
+      case 'setmode': return send('mode', { mode: el.dataset.mode });
+      case 'create': return enter('/api/create', { nick: val('nick'), mode: ui.mode });
       case 'join': return enter('/api/join', { nick: val('nick'), code: val('code') });
       case 'leave': if (await send('leave')) { forget(); queue(); } return;
       case 'start': case 'restart': return send('start');
       case 'lobby': return send('lobby');
-      case 'abort': ui.abort = !ui.abort; if (ui.abort) { S.notice = '정말 중단하려면 버튼을 한 번 더 누르세요.'; setTimeout(() => { ui.abort = false; }, 4000); queue(); return; } S.notice = null; return send('lobby');
+      case 'abort':
+        if (!ui.abort) { ui.abort = true; queue(); setTimeout(() => { ui.abort = false; queue(); }, 4000); return; }
+        ui.abort = false; return send('lobby');
       case 'reset': forget(); queue(); return;
       case 'dismiss': S.error = null; S.notice = null; return queue();
-      case 'showcard': ui.cardShown = true; return queue();
-      case 'hidecard': ui.cardShown = false; return queue();
+      case 'togglecard': ui.cardOpen = !ui.cardOpen; return queue();
       case 'pickvote': ui.votePick = +el.dataset.i; return queue();
       case 'pickguess': ui.guessPick = +el.dataset.i; return queue();
       case 'vote': if (ui.votePick !== null) await send('vote', { target: ui.votePick }); return;
-      case 'guess': if (ui.guessPick !== null) await send('guess', { word: ui.guessPick }); return;
+      case 'guess': if (ui.guessPick !== null && S.view.guessWords) await send('guess', { word: S.view.guessWords[ui.guessPick] }); return;
       case 'describe': {
         const d = document.getElementById('desc'); if (!d) return;
         if (await send('describe', { text: d.value })) { const d2 = document.getElementById('desc'); if (d2) d2.value = ''; }

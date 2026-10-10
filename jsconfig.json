@@ -1,0 +1,12 @@
+{
+  "compilerOptions": {
+    "checkJs": true,
+    "allowJs": true,
+    "noEmit": true,
+    "strict": true,
+    "target": "es2022",
+    "module": "commonjs",
+    "types": ["node"]
+  },
+  "files": ["server.js", "words.js"]
+}

@@ -1,156 +1,242 @@
-// 라이어 테이블 — 4인 온라인 라이어게임 서버
-// 의존성 없음 (Node.js 18+ 내장 모듈만 사용). 실시간 동기화는 Server-Sent Events.
+// @ts-check
+// 라이어게임 — 실시간 온라인 추리 게임 서버  (MADE BY KIMJIHUN)
+// 의존성 없음 (Node.js 18+ 내장 모듈만). 실시간 동기화: Server-Sent Events.
 'use strict';
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const { WORDS, PAIRS } = require('./words');
 
-const PORT = process.env.PORT || 3000;
+const PORT = Number(process.env.PORT) || 3000;
+const MAX_PLAYERS = 8;
 const MAX_DESC = 60;
 const MAX_ROOMS = 500;
-const ROOM_IDLE_MS = 3 * 60 * 60 * 1000; // 3시간 동안 아무 일 없으면 방 삭제
+const ROOM_IDLE_MS = 3 * 60 * 60 * 1000;
 const CODE_ABC = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
-const CATS = [
-  { name: '장소', words: ['학교', '병원', '공항', '해수욕장', '영화관', '도서관', '놀이공원', '편의점', '찜질방', '수영장', '경찰서', '동물원', '캠핑장', '지하철역', '미용실', '노래방', '박물관', '시장'] },
-  { name: '음식', words: ['김치찌개', '떡볶이', '치킨', '피자', '짜장면', '삼겹살', '초밥', '라면', '비빔밥', '햄버거', '냉면', '김밥', '순대', '붕어빵', '마라탕', '갈비탕', '아이스크림', '돈가스'] },
-  { name: '동물', words: ['고양이', '강아지', '호랑이', '기린', '펭귄', '코끼리', '원숭이', '토끼', '돌고래', '판다', '거북이', '사자', '하마', '다람쥐', '캥거루', '부엉이', '악어', '고래'] },
-  { name: '물건', words: ['우산', '냉장고', '칫솔', '안경', '휴대폰', '시계', '의자', '가위', '거울', '베개', '지갑', '이어폰', '선풍기', '리모컨', '볼펜', '열쇠', '텀블러', '손전등'] },
-  { name: '취미', words: ['탁구', '낚시', '등산', '요리', '독서', '사진 찍기', '그림 그리기', '게임', '캠핑', '뜨개질', '노래', '자전거', '볼링', '수영', '바둑', '영화 감상', '춤', '퍼즐'] },
-  { name: '직업', words: ['의사', '소방관', '요리사', '선생님', '경찰관', '택배기사', '가수', '유튜버', '변호사', '미용사', '농부', '비행기 조종사', '프로그래머', '간호사', '운동선수', '기자', '목수', '은행원'] },
-];
+/** @typedef {'normal'|'fool'|'spy'} Mode */
+/** @typedef {'citizen'|'liar'|'fool'|'spy'} Role */
+/** @type {Record<Mode, {name: string, min: number}>} */
+const MODES = {
+  normal: { name: '노멀모드', min: 4 },
+  fool: { name: '바보모드', min: 4 },
+  spy: { name: '스파이모드', min: 5 },
+};
 
-// ---------------- 상태 (서버 메모리) ----------------
-const rooms = new Map();   // code -> room
-const tokens = new Map();  // token -> { code, pid }
+/**
+ * @typedef {{pid: string, nick: string, tokenHash: string}} Player
+ * @typedef {{pid: string, res: http.ServerResponse}} Client
+ * @typedef {{seat: number, round: number, text: string}} Desc
+ * @typedef {{winner: 'citizen'|'liar'|'fool', label: string, reason: string}} Outcome
+ * @typedef {{
+ *   n: number, mode: Mode, phase: 'desc'|'vote'|'guess'|'end', size: number,
+ *   category: string, word: string, foolWord: string|null, guessWords: string[],
+ *   roles: Role[], turn: number, desc: Desc[], votes: (number|null)[],
+ *   suspect: number|null, tally: number[]|null, ties: number[]|null,
+ *   guess: string|null, outcome: Outcome|null
+ * }} Game
+ * @typedef {{
+ *   code: string, mode: Mode, host: number, status: 'lobby'|'play',
+ *   players: Player[], clients: Set<Client>, game: Game|null, touched: number
+ * }} Room
+ */
 
-class GameError extends Error { constructor(msg, status = 400) { super(msg); this.status = status; } }
-const fail = (msg, status) => { throw new GameError(msg, status); };
-const rint = n => crypto.randomInt(n);
-const newToken = () => crypto.randomBytes(24).toString('base64url');
-const cleanText = s => String(s == null ? '' : s).replace(/[\u0000-\u001f\u007f]/g, '').replace(/\s+/g, ' ').trim();
-const len = s => [...s].length;
+/** @type {Map<string, Room>} */
+const rooms = new Map();
+/** 토큰 원문은 저장하지 않고 SHA-256 해시만 보관합니다. @type {Map<string, {code: string, pid: string}>} */
+const tokens = new Map();
 
-function newCode() {
-  for (let i = 0; i < 50; i++) {
-    const c = Array.from({ length: 5 }, () => CODE_ABC[rint(CODE_ABC.length)]).join('');
-    if (!rooms.has(c)) return c;
-  }
-  fail('방을 만들 수 없어요. 잠시 후 다시 시도해 주세요.', 503);
+class GameError extends Error {
+  /** @param {string} msg @param {number} [status] */
+  constructor(msg, status = 400) { super(msg); this.status = status; }
 }
+/** @param {string} msg @param {number} [status] @returns {never} */
+const fail = (msg, status) => { throw new GameError(msg, status); };
+/** @param {number} n */
+const rint = n => crypto.randomInt(n);
+/** @param {string} t */
+const hashToken = t => crypto.createHash('sha256').update(t).digest('hex');
+/** @param {unknown} s */
+const cleanText = s => String(s == null ? '' : s).replace(/[\u0000-\u001f\u007f]/g, '').replace(/\s+/g, ' ').trim();
+/** @param {string} s */
+const len = s => [...s].length;
+/** @param {string} s */
+const squash = s => s.replace(/\s/g, '');
+/** @template T @param {T[]} a @returns {T[]} */
+function shuffle(a) { for (let i = a.length - 1; i > 0; i--) { const j = rint(i + 1); [a[i], a[j]] = [a[j], a[i]]; } return a; }
 
+/** @param {unknown} m @returns {Mode} */
+function checkMode(m) {
+  if (m === 'normal' || m === 'fool' || m === 'spy') return m;
+  return fail('게임 모드를 골라 주세요.');
+}
+/** @param {unknown} raw */
 function checkNick(raw) {
   const nick = cleanText(raw);
   if (!nick) fail('닉네임을 입력해 주세요.');
   if (len(nick) > 10) fail('닉네임은 10자 이하로 써 주세요.');
   return nick;
 }
-
+function newCode() {
+  for (let i = 0; i < 50; i++) {
+    const c = Array.from({ length: 5 }, () => CODE_ABC[rint(CODE_ABC.length)]).join('');
+    if (!rooms.has(c)) return c;
+  }
+  return fail('방을 만들 수 없어요. 잠시 후 다시 시도해 주세요.', 503);
+}
+/** @param {Room} room @param {string} nick */
 function addPlayer(room, nick) {
   const pid = crypto.randomBytes(8).toString('hex');
-  const token = newToken();
-  room.players.push({ pid, nick, token });
-  tokens.set(token, { code: room.code, pid });
+  const token = crypto.randomBytes(24).toString('base64url');
+  const tokenHash = hashToken(token);
+  room.players.push({ pid, nick, tokenHash });
+  tokens.set(tokenHash, { code: room.code, pid });
   return token;
 }
-
+/** @param {unknown} token */
 function auth(token) {
-  const t = tokens.get(String(token || ''));
-  if (!t) fail('참가 정보가 없어요. 처음 화면에서 다시 들어와 주세요.', 401);
+  const h = hashToken(String(token || ''));
+  const t = tokens.get(h);
+  if (!t) return fail('참가 정보가 없어요. 처음 화면에서 다시 들어와 주세요.', 401);
   const room = rooms.get(t.code);
-  if (!room) { tokens.delete(token); fail('방이 사라졌어요. 새 방을 만들어 주세요.', 410); }
+  if (!room) { tokens.delete(h); return fail('방이 사라졌어요. 새 방을 만들어 주세요.', 410); }
   const seat = room.players.findIndex(p => p.pid === t.pid);
-  if (seat < 0) { tokens.delete(token); fail('이 방에서 나간 상태예요.', 410); }
+  if (seat < 0) { tokens.delete(h); return fail('이 방에서 나간 상태예요.', 410); }
   return { room, seat, player: room.players[seat] };
 }
+/** @param {Room} room */
+const playing = room => room.status === 'play' && !!room.game && room.game.phase !== 'end';
 
 // ---------------- 게임 로직 ----------------
+/** @param {Room} room */
 function startGame(room) {
-  const cat = rint(CATS.length);
+  const size = room.players.length, mode = room.mode;
+  if (size > MAX_PLAYERS) fail(`최대 ${MAX_PLAYERS}명까지 할 수 있어요.`);
+  if (size < MODES[mode].min) fail(`${MODES[mode].name}는 ${MODES[mode].min}명 이상이어야 시작할 수 있어요. (지금 ${size}명)`);
+
+  let category, word, foolWord = null, guessWords;
+  if (mode === 'fool') {
+    const cat = PAIRS[rint(PAIRS.length)];
+    const pair = cat.pairs[rint(cat.pairs.length)];
+    const flip = rint(2) === 1;
+    category = cat.name; word = flip ? pair[1] : pair[0]; foolWord = flip ? pair[0] : pair[1];
+    guessWords = cat.pairs.flat();
+  } else {
+    const cat = WORDS[rint(WORDS.length)];
+    category = cat.name; word = cat.words[rint(cat.words.length)]; guessWords = cat.words.slice();
+  }
+  /** @type {Role[]} */
+  const roles = Array(size).fill('citizen');
+  const order = shuffle([...Array(size).keys()]);
+  if (mode === 'normal') roles[order[0]] = 'liar';
+  if (mode === 'fool') roles[order[0]] = 'fool';
+  if (mode === 'spy') { roles[order[0]] = 'liar'; roles[order[1]] = 'spy'; }
+
   room.game = {
-    n: (room.game ? room.game.n : 0) + 1,
-    phase: 'desc',
-    cat,
-    word: rint(CATS[cat].words.length),
-    liar: rint(4),
-    turn: 0,               // 0..7 (2라운드 × 4명)
-    desc: [],              // {seat, round, text}
-    votes: [null, null, null, null],
-    suspect: null, tally: null, ties: null,
-    guess: null, result: null,
+    n: (room.game ? room.game.n : 0) + 1, mode, phase: 'desc', size,
+    category, word, foolWord, guessWords: shuffle(guessWords),
+    roles, turn: 0, desc: [], votes: Array(size).fill(null),
+    suspect: null, tally: null, ties: null, guess: null, outcome: null,
   };
   room.status = 'play';
 }
 
+/** 이 사람이 받은 제시어 (라이어는 null) @param {Game} g @param {number} seat */
+function wordOf(g, seat) {
+  const r = g.roles[seat];
+  if (r === 'liar') return null;
+  if (r === 'fool') return g.foolWord;
+  return g.word;
+}
+/** 최종 추측을 하는 역할 @param {Game} g */
+const guesserRole = g => (g.mode === 'fool' ? 'fool' : 'liar');
+
+/** @param {Game} g @param {Outcome['winner']} winner @param {string} reason */
+function endGame(g, winner, reason) {
+  const label = winner === 'citizen' ? '시민 승리'
+    : winner === 'fool' ? (g.suspect !== null && g.roles[g.suspect] === 'fool' ? '바보 역전승' : '바보 승리')
+    : g.mode === 'spy' ? '라이어·스파이 진영 승리' : '라이어 승리';
+  g.phase = 'end'; g.outcome = { winner, label, reason };
+}
+
+/** @param {Game} g */
 function finishVotes(g) {
-  const tally = [0, 0, 0, 0];
-  g.votes.forEach(t => { tally[t]++; });
+  const tally = Array(g.size).fill(0);
+  g.votes.forEach(t => { if (t !== null) tally[t]++; });
   const max = Math.max(...tally);
-  const ties = [0, 1, 2, 3].filter(i => tally[i] === max);
+  const ties = tally.map((v, i) => (v === max ? i : -1)).filter(i => i >= 0);
   g.tally = tally; g.ties = ties;
-  g.suspect = ties[rint(ties.length)];
-  if (g.suspect === g.liar) g.phase = 'claim';
+  const suspect = ties[rint(ties.length)];
+  g.suspect = suspect;
+  const role = g.roles[suspect];
+  if (role === guesserRole(g)) { g.phase = 'guess'; return; }
+  if (g.mode === 'fool') endGame(g, 'fool', '바보가 아닌 사람이 지목돼서 바보가 이겼어요.');
+  else if (g.mode === 'spy') endGame(g, 'liar', role === 'spy' ? '스파이가 지목됐어요. 라이어는 끝까지 숨었어요.' : '시민이 라이어로 잘못 지목됐어요.');
   else endGame(g, 'liar', '시민이 라이어로 잘못 지목됐어요.');
 }
 
-function endGame(g, winner, reason) { g.phase = 'end'; g.result = { winner, reason }; }
-
+/** @typedef {{room: Room, seat: number, player: Player}} Ctx */
+/** @type {Record<string, (ctx: Ctx, body: any) => void>} */
 const actions = {
+  mode(ctx, body) {
+    const { room, seat } = ctx;
+    if (room.host !== seat) fail('모드는 방장만 바꿀 수 있어요.');
+    if (playing(room)) fail('게임 중에는 모드를 바꿀 수 없어요.');
+    room.mode = checkMode(body.mode);
+  },
   start(ctx) {
     const { room, seat } = ctx;
     if (room.host !== seat) fail('방장만 시작할 수 있어요.');
-    if (room.status === 'play' && room.game.phase !== 'end') fail('이미 게임이 진행 중이에요.');
-    if (room.players.length !== 4) fail('4명이 모두 들어와야 시작할 수 있어요.');
+    if (playing(room)) fail('이미 게임이 진행 중이에요.');
     startGame(room);
   },
   describe(ctx, body) {
     const { room, seat } = ctx, g = room.game;
-    if (room.status !== 'play' || g.phase !== 'desc') fail('지금은 설명 단계가 아니에요.');
-    if (g.turn % 4 !== seat) fail('아직 내 차례가 아니에요.');
+    if (!g || !playing(room) || g.phase !== 'desc') return fail('지금은 설명 단계가 아니에요.');
+    if (g.turn % g.size !== seat) fail('아직 내 차례가 아니에요.');
     const text = cleanText(body.text);
     if (!text) fail('설명을 한 줄 써 주세요.');
     if (len(text) > MAX_DESC) fail(`설명은 ${MAX_DESC}자 이하로 써 주세요.`);
-    if (seat !== g.liar) {
-      const w = CATS[g.cat].words[g.word].replace(/\s/g, '');
-      if (text.replace(/\s/g, '').includes(w)) fail('제시어를 그대로 쓰면 안 돼요. 돌려서 설명해 주세요.');
-    }
-    g.desc.push({ seat, round: g.turn >> 2, text });
+    const mine = wordOf(g, seat);
+    if (mine && squash(text).includes(squash(mine))) fail('제시어를 그대로 쓰면 안 돼요. 돌려서 설명해 주세요.');
+    g.desc.push({ seat, round: Math.floor(g.turn / g.size), text });
     g.turn++;
-    if (g.turn >= 8) g.phase = 'vote';
+    if (g.turn >= g.size * 2) g.phase = 'vote';
   },
   vote(ctx, body) {
     const { room, seat } = ctx, g = room.game;
-    if (room.status !== 'play' || g.phase !== 'vote') fail('지금은 투표 단계가 아니에요.');
+    if (!g || !playing(room) || g.phase !== 'vote') return fail('지금은 투표 단계가 아니에요.');
     if (g.votes[seat] !== null) fail('이미 투표했어요.');
     const t = body.target;
-    if (!Number.isInteger(t) || t < 0 || t > 3) fail('투표할 사람을 골라 주세요.');
+    if (!Number.isInteger(t) || t < 0 || t >= g.size) fail('투표할 사람을 골라 주세요.');
     if (t === seat) fail('자기 자신에게는 투표할 수 없어요.');
     g.votes[seat] = t;
     if (g.votes.every(v => v !== null)) finishVotes(g);
   },
   guess(ctx, body) {
     const { room, seat } = ctx, g = room.game;
-    if (room.status !== 'play' || g.phase !== 'claim') fail('지금은 정답을 맞히는 단계가 아니에요.');
-    if (seat !== g.liar) fail('라이어만 정답을 고를 수 있어요.');
+    if (!g || !playing(room) || g.phase !== 'guess') return fail('지금은 정답을 맞히는 단계가 아니에요.');
+    if (seat !== g.suspect) fail('지목된 사람만 정답을 고를 수 있어요.');
     const w = body.word;
-    if (!Number.isInteger(w) || w < 0 || w >= CATS[g.cat].words.length) fail('제시어 하나를 골라 주세요.');
+    if (typeof w !== 'string' || !g.guessWords.includes(w)) fail('보기에서 제시어 하나를 골라 주세요.');
     g.guess = w;
-    if (w === g.word) endGame(g, 'liar', '라이어가 지목됐지만 제시어를 맞혔어요.');
-    else endGame(g, 'citizen', '라이어를 찾아냈고, 라이어의 추측이 틀렸어요.');
+    const right = w === g.word;
+    if (g.mode === 'fool') endGame(g, right ? 'fool' : 'citizen', right ? '바보가 지목됐지만 시민들의 제시어를 맞혔어요.' : '바보를 찾아냈고, 바보가 시민의 제시어를 맞히지 못했어요.');
+    else endGame(g, right ? 'liar' : 'citizen', right ? '라이어가 지목됐지만 제시어를 맞혔어요.' : '라이어를 찾아냈고, 라이어의 추측이 틀렸어요.');
   },
   lobby(ctx) {
     const { room, seat } = ctx;
     if (room.status !== 'play') return;
-    if (room.game.phase !== 'end' && room.host !== seat) fail('게임 중단은 방장만 할 수 있어요.');
+    if (playing(room) && room.host !== seat) fail('게임 중단은 방장만 할 수 있어요.');
     room.status = 'lobby';
   },
   leave(ctx) {
     const { room, seat, player } = ctx;
-    if (room.status === 'play' && room.game.phase !== 'end') fail('게임 중에는 나갈 수 없어요. 방장이 게임을 중단하거나 판이 끝난 뒤 나가 주세요.');
+    if (playing(room)) fail('게임 중에는 나갈 수 없어요. 방장이 게임을 중단하거나 판이 끝난 뒤 나가 주세요.');
     room.players.splice(seat, 1);
-    tokens.delete(player.token);
-    for (const c of room.clients) if (c.pid === player.pid) { try { c.res.end(); } catch (e) {} room.clients.delete(c); }
+    tokens.delete(player.tokenHash);
+    for (const c of room.clients) if (c.pid === player.pid) { try { c.res.end(); } catch (e) { /* ignore */ } room.clients.delete(c); }
     room.status = 'lobby';
     if (!room.players.length) { deleteRoom(room); return; }
     if (room.host === seat) room.host = 0; else if (room.host > seat) room.host--;
@@ -158,55 +244,63 @@ const actions = {
 };
 actions.restart = actions.start;
 
+/** @param {Room} room */
 function deleteRoom(room) {
-  for (const p of room.players) tokens.delete(p.token);
-  for (const c of room.clients) { try { c.res.end(); } catch (e) {} }
+  for (const p of room.players) tokens.delete(p.tokenHash);
+  for (const c of room.clients) { try { c.res.end(); } catch (e) { /* ignore */ } }
   rooms.delete(room.code);
 }
 
-// ---------------- 개인별 화면 데이터 (비밀 정보는 필요한 사람에게만) ----------------
+// ---------------- 개인별 화면 데이터: 본인에게 필요한 정보만 ----------------
+/** @param {Room} room @param {number} seat */
 function viewFor(room, seat) {
   const online = new Set([...room.clients].map(c => c.pid));
+  /** @type {Record<string, any>} */
   const v = {
-    code: room.code, me: seat, host: room.host, status: room.status, maxDesc: MAX_DESC,
+    code: room.code, me: seat, host: room.host, status: room.status, mode: room.mode,
+    modes: MODES, maxPlayers: MAX_PLAYERS, maxDesc: MAX_DESC,
     players: room.players.map(p => ({ nick: p.nick, online: online.has(p.pid) })),
   };
   const g = room.game;
   if (room.status !== 'play' || !g) return v;
-  const cat = CATS[g.cat];
+  const role = g.roles[seat];
+  /** @type {Record<string, any>} */
+  let card;
+  if (role === 'liar') card = { role: 'liar' };
+  else if (role === 'spy') card = { role: 'spy', word: g.word, liar: g.roles.indexOf('liar') };
+  else card = { role: 'citizen', word: wordOf(g, seat) }; // 바보도 결과 전까지 '시민'으로 보입니다
   Object.assign(v, {
-    n: g.n, phase: g.phase, category: cat.name,
-    card: seat === g.liar ? { liar: true } : { liar: false, word: cat.words[g.word] },
-    turn: g.turn, turnSeat: g.phase === 'desc' ? g.turn % 4 : null, round: g.turn >> 2,
-    desc: g.desc,
-    voted: g.votes.map(x => x !== null),          // 누가 투표했는지만 (누구에게는 비공개)
-    myVote: g.votes[seat],
+    n: g.n, mode: g.mode, phase: g.phase, size: g.size, category: g.category, card,
+    turn: g.turn, turnSeat: g.phase === 'desc' ? g.turn % g.size : null, round: Math.floor(g.turn / g.size),
+    desc: g.desc, voted: g.votes.map(x => x !== null), myVote: g.votes[seat],
   });
-  if (g.phase === 'claim' || g.phase === 'end') {
+  if (g.phase === 'guess' || g.phase === 'end') {
     Object.assign(v, { tally: g.tally, ties: g.ties, suspect: g.suspect });
-    if (g.phase === 'claim' && seat === g.liar) v.words = cat.words; // 라이어의 마지막 기회용 보기
+    if (g.phase === 'guess' && seat === g.suspect) v.guessWords = g.guessWords;
   }
-  if (g.phase === 'end') {
-    v.result = Object.assign({}, g.result, {
-      liar: g.liar, word: cat.words[g.word], votes: g.votes,
-      guess: g.guess === null ? null : cat.words[g.guess],
+  if (g.phase === 'end' && g.outcome) {
+    v.result = Object.assign({}, g.outcome, {
+      roles: g.roles, word: g.word, foolWord: g.foolWord, votes: g.votes, guess: g.guess,
+      words: g.roles.map((_, i) => wordOf(g, i)),
     });
   }
   return v;
 }
-
+/** @param {Room} room */
 function broadcast(room) {
   room.touched = Date.now();
   for (const c of room.clients) {
     const seat = room.players.findIndex(p => p.pid === c.pid);
     if (seat < 0) continue;
-    try { c.res.write(`data: ${JSON.stringify(viewFor(room, seat))}\n\n`); } catch (e) {}
+    try { c.res.write(`data: ${JSON.stringify(viewFor(room, seat))}\n\n`); } catch (e) { /* ignore */ }
   }
 }
 
-// ---------------- 요청 제한 (도배 방지) ----------------
+// ---------------- 요청 제한 ----------------
+const RATE_BURST = 150, RATE_PER_SEC = 25; // 같은 와이파이의 8명이 함께 써도 넉넉한 수준
+/** @type {Map<string, {t: number, at: number}>} */
 const buckets = new Map();
-const RATE_BURST = 120, RATE_PER_SEC = 20; // 같은 와이파이의 4명이 함께 써도 넉넉한 수준
+/** @param {string} ip */
 function rateOk(ip) {
   if (process.env.LIAR_NO_RATE_LIMIT === '1') return true;
   const now = Date.now();
@@ -219,38 +313,44 @@ function rateOk(ip) {
 
 // ---------------- HTTP ----------------
 const INDEX = path.join(__dirname, 'index.html');
+/** @param {http.ServerResponse} res @param {number} status @param {object} obj */
 function send(res, status, obj) {
-  const body = JSON.stringify(obj);
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
-  res.end(body);
+  res.end(JSON.stringify(obj));
 }
+/** @param {http.IncomingMessage} req @returns {Promise<any>} */
 function readBody(req) {
   return new Promise((resolve, reject) => {
     let data = '';
     req.on('data', ch => { data += ch; if (data.length > 4096) { reject(new GameError('요청이 너무 커요.', 413)); req.destroy(); } });
-    req.on('end', () => { try { resolve(data ? JSON.parse(data) : {}); } catch (e) { reject(new GameError('잘못된 요청이에요.')); } });
+    req.on('end', () => {
+      try { const j = data ? JSON.parse(data) : {}; resolve(j && typeof j === 'object' ? j : {}); }
+      catch (e) { reject(new GameError('잘못된 요청이에요.')); }
+    });
     req.on('error', reject);
   });
 }
 
 const server = http.createServer(async (req, res) => {
-  const url = new URL(req.url, 'http://x');
+  const url = new URL(req.url || '/', 'http://x');
   const ip = String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0].trim();
   try {
     if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/index.html')) {
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer' });
-      return fs.createReadStream(INDEX).pipe(res);
+      fs.createReadStream(INDEX).pipe(res);
+      return;
     }
     if (req.method === 'GET' && url.pathname === '/healthz') return send(res, 200, { ok: true, rooms: rooms.size });
 
     if (req.method === 'GET' && url.pathname === '/api/events') {
-      const { room, seat, player } = auth(url.searchParams.get('token'));
+      const { room, player } = auth(url.searchParams.get('token'));
       res.writeHead(200, { 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-store', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
       res.write('retry: 2000\n\n');
+      /** @type {Client} */
       const client = { pid: player.pid, res };
       room.clients.add(client);
       broadcast(room);
-      const ping = setInterval(() => { try { res.write(': ping\n\n'); } catch (e) {} }, 20000);
+      const ping = setInterval(() => { try { res.write(': ping\n\n'); } catch (e) { /* ignore */ } }, 20000);
       req.on('close', () => { clearInterval(ping); room.clients.delete(client); if (rooms.get(room.code) === room) broadcast(room); });
       return;
     }
@@ -261,8 +361,10 @@ const server = http.createServer(async (req, res) => {
 
     if (url.pathname === '/api/create') {
       const nick = checkNick(body.nick);
+      const mode = checkMode(body.mode);
       if (rooms.size >= MAX_ROOMS) fail('지금은 방이 너무 많아요. 잠시 후 다시 시도해 주세요.', 503);
-      const room = { code: newCode(), host: 0, status: 'lobby', players: [], clients: new Set(), game: null, touched: Date.now() };
+      /** @type {Room} */
+      const room = { code: newCode(), mode, host: 0, status: 'lobby', players: [], clients: new Set(), game: null, touched: Date.now() };
       rooms.set(room.code, room);
       const token = addPlayer(room, nick);
       return send(res, 200, { token, code: room.code });
@@ -272,9 +374,9 @@ const server = http.createServer(async (req, res) => {
       const code = String(body.code || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
       if (code.length !== 5) fail('초대 코드는 5자리예요.');
       const room = rooms.get(code);
-      if (!room) fail('그런 초대 코드의 방이 없어요. 코드를 다시 확인해 주세요.', 404);
-      if (room.status === 'play' && room.game.phase !== 'end') fail('이미 게임이 진행 중인 방이에요.', 409);
-      if (room.players.length >= 4) fail('방이 가득 찼어요. (4/4)', 409);
+      if (!room) return fail('그런 초대 코드의 방이 없어요. 코드를 다시 확인해 주세요.', 404);
+      if (room.status === 'play') fail('게임이 진행 중인 방이에요. 판이 끝나고 방장이 대기실로 돌아오면 들어올 수 있어요.', 409);
+      if (room.players.length >= MAX_PLAYERS) fail(`방이 가득 찼어요. (${MAX_PLAYERS}/${MAX_PLAYERS})`, 409);
       if (room.players.some(p => p.nick.toLowerCase() === nick.toLowerCase())) fail('같은 닉네임이 이미 방에 있어요. 다른 닉네임을 써 주세요.', 409);
       const token = addPlayer(room, nick);
       broadcast(room);
@@ -283,9 +385,9 @@ const server = http.createServer(async (req, res) => {
     if (url.pathname === '/api/action') {
       const ctx = auth(body.token);
       if (body.type === 'ping') return send(res, 200, { ok: true });
-      const fn = actions[body.type];
+      const fn = Object.prototype.hasOwnProperty.call(actions, body.type) ? actions[body.type] : null;
       if (!fn) fail('알 수 없는 동작이에요.');
-      fn(ctx, body);
+      else fn(ctx, body);
       if (rooms.get(ctx.room.code) === ctx.room) broadcast(ctx.room);
       return send(res, 200, { ok: true });
     }
@@ -297,12 +399,11 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-// 오래 비어 있는 방 정리
 setInterval(() => {
   const now = Date.now();
   for (const room of rooms.values()) if (!room.clients.size && now - room.touched > ROOM_IDLE_MS) deleteRoom(room);
   for (const [ip, b] of buckets) if (now - b.at > 60000) buckets.delete(ip);
 }, 60000).unref();
 
-if (require.main === module) server.listen(PORT, () => console.log(`라이어 테이블 서버 실행 중: http://localhost:${PORT}`));
-module.exports = { server, rooms, CATS };
+if (require.main === module) server.listen(PORT, () => console.log(`라이어게임 서버 실행 중: http://localhost:${PORT}`));
+module.exports = { server, rooms, tokens, MODES };
