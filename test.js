@@ -177,7 +177,8 @@ async function playRound(R, mode, n, target, guess) {
   const page = await new Promise(r => http.get(BASE + '/', res => { let d = ''; res.on('data', c => (d += c)); res.on('end', () => r({ s: res.statusCode, d })); }));
   assert.strictEqual(page.s, 200);
   assert.ok(page.d.includes('<title>라이어게임</title>') && page.d.includes('content="KIMJIHUN"') && page.d.includes('KIMJIHUN</span>') && !/SECRET LIAR/i.test(page.d));
-  console.log('✓ 메인 페이지: 제목 "라이어게임", 제작자 KIMJIHUN 메타·푸터 표시');
+  assert.ok(page.d.includes('Copyright © 2026 KIMJIHUN') && page.d.includes('placeholder="닉네임을 입력해주세요."') && !page.d.includes('예: 지훈'));
+  console.log('✓ 메인 페이지: 제목 "라이어게임", 제작자 KIMJIHUN, Copyright © 2026 표기, 닉네임 안내 문구');
 
   console.log('\n[방 생성·참가·인원 검증]');
   await expectErr(req('POST', '/api/create', { nick: '지훈' }), /모드/, '모드 없이 방 생성');

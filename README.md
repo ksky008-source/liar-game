@@ -35,3 +35,6 @@ GitHub `main`에 새 코드가 올라오면 Render가 자동으로 다시 배포
 - 게임 상태는 서버 메모리에 있습니다. 서버가 재시작되면 진행 중인 방은 사라집니다.
 - Render 무료 플랜은 15분 동안 접속이 없으면 잠들고, 다음 첫 접속에 30~50초가 걸립니다.
 - GitHub Pages는 정적 파일만 제공하므로 실시간 게임 서버를 실행할 수 없습니다. 그래서 코드는 GitHub에, 실행은 GitHub와 연결된 Render에서 합니다.
+
+---
+Copyright © 2026 KIMJIHUN. All rights reserved.

@@ -7,6 +7,7 @@
 <meta name="description" content="친구들과 각자 휴대폰·PC로 함께하는 실시간 온라인 라이어게임 (노멀·바보·스파이모드, 4~8인)">
 <meta name="author" content="KIMJIHUN">
 <meta name="creator" content="KIMJIHUN">
+<meta name="copyright" content="Copyright © 2026 KIMJIHUN. All rights reserved.">
 <meta property="og:title" content="라이어게임">
 <meta property="og:description" content="4~8명이 함께하는 실시간 온라인 라이어게임 · MADE BY KIMJIHUN">
 <meta name="theme-color" content="#0a1322">
@@ -200,6 +201,7 @@ footer.credit { margin-top: 36px; padding: 22px 16px 26px; border-top: 1px solid
 .badge .by { font-size: 13px; font-weight: 700; letter-spacing: .2em; color: var(--muted); }
 .badge .name { font-family: var(--f-mono); font-size: 20px; font-weight: 700; letter-spacing: .14em; color: var(--mint); }
 footer.credit p { font-size: 12.5px; color: var(--faint); }
+footer.credit p.copy { font-size: 13.5px; color: var(--muted); letter-spacing: .02em; }
 </style>
 </head>
 <body>
@@ -214,6 +216,7 @@ footer.credit p { font-size: 12.5px; color: var(--faint); }
 </div>
 <footer class="credit">
   <div class="badge" aria-label="제작자 KIMJIHUN"><span class="by">MADE BY</span><span class="name">KIMJIHUN</span></div>
+  <p class="copy">Copyright © 2026 KIMJIHUN. All rights reserved.</p>
   <p>라이어게임 · 역할과 제시어는 서버가 본인에게만 보내요</p>
 </footer>
 <div id="toast"></div>
@@ -295,7 +298,7 @@ footer.credit p { font-size: 12.5px; color: var(--faint); }
       '<p class="muted">방을 만들고 초대 링크를 보내세요. 4~8명이 각자 휴대폰이나 PC로 들어오면 바로 시작할 수 있어요. 순서대로 두 바퀴 설명한 뒤 비밀 투표로 범인을 찾아요.</p>' +
       '<div class="label" style="margin-top:6px">모드 선택</div><div class="modes" role="radiogroup" aria-label="게임 모드">' + cards + '</div></section>' +
       '<section class="panel stack">' +
-      '<div class="field"><label for="nick">닉네임 (10자 이하)</label><input type="text" id="nick" maxlength="10" placeholder="예: 지훈" value="' + esc(ls.get('liar.nick')) + '" autocomplete="nickname"></div>' +
+      '<div class="field"><label for="nick">닉네임 (10자 이하)</label><input type="text" id="nick" maxlength="10" placeholder="닉네임을 입력해주세요." value="' + esc(ls.get('liar.nick')) + '" autocomplete="nickname"></div>' +
       '<button class="btn primary block" type="button" data-act="create"' + (S.busy ? ' disabled' : '') + '>' + MODES[ui.mode].name + '로 새 방 만들기</button>' +
       '<div class="or">또는 초대받은 방에 참가</div>' +
       '<div class="field"><label for="code">초대 코드 5자리</label><input type="text" id="code" class="code" maxlength="5" placeholder="ABCDE" value="' + esc(pre) + '" autocomplete="off" autocapitalize="characters"></div>' +
