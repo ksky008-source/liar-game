@@ -105,7 +105,7 @@ input.code { font-family: var(--f-mono); letter-spacing: .35em; text-transform: 
 .hint b { color: var(--fg); }
 
 /* game */
-.stepper { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin-bottom: 18px; }
+.stepper { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 6px; margin-bottom: 18px; }
 .stepper div { font-size: 12px; text-align: center; padding-top: 8px; border-top: 3px solid var(--line-soft); color: var(--faint); font-weight: 500; word-break: keep-all; }
 .stepper div.done { border-color: rgba(63,227,191,.35); color: var(--muted); }
 .stepper div.on { border-color: var(--mint); color: var(--fg); font-weight: 700; }
@@ -295,7 +295,7 @@ footer.credit p.copy { font-size: 13.5px; color: var(--muted); letter-spacing: .
     return '<div class="home">' +
       '<section class="hero"><span class="label">실시간 온라인 추리 게임</span>' +
       '<h1>라이어게임<br><em>누가 거짓말을 할까?</em></h1>' +
-      '<p class="muted">방을 만들고 초대 링크를 보내세요. 4~8명이 각자 휴대폰이나 PC로 들어오면 바로 시작할 수 있어요. 순서대로 두 바퀴 설명한 뒤 비밀 투표로 범인을 찾아요.</p>' +
+      '<p class="muted">방을 만들고 초대 링크를 보내세요. 4~8명이 각자 휴대폰이나 PC로 들어오면 바로 시작할 수 있어요. 라운드마다 무작위 순서로 설명한 뒤 비밀 투표로 범인을 찾아요.</p>' +
       '<div class="label" style="margin-top:6px">모드 선택</div><div class="modes" role="radiogroup" aria-label="게임 모드">' + cards + '</div></section>' +
       '<section class="panel stack">' +
       '<div class="field"><label for="nick">닉네임 (10자 이하)</label><input type="text" id="nick" maxlength="10" placeholder="닉네임을 입력해주세요." value="' + esc(ls.get('liar.nick')) + '" autocomplete="nickname"></div>' +
@@ -325,6 +325,7 @@ footer.credit p.copy { font-size: 13.5px; color: var(--muted); letter-spacing: .
       '<div class="codebox"><div style="min-width:0"><div class="label">초대 코드</div><div class="code-big">' + esc(V.code) + '</div><div class="muted" style="font-size:13px;overflow-wrap:anywhere">' + esc(link) + '</div></div>' +
       '<button class="btn" type="button" data-act="copy">' + (ui.copied ? '복사했어요' : '초대 링크 복사') + '</button></div>' +
       '<div class="stack" style="gap:8px"><div class="label">게임 모드' + (isHost ? ' (방장만 바꿀 수 있어요)' : '') + '</div>' + seg + '<p class="muted" style="font-size:13.5px">' + esc(MODES[V.mode].desc) + '</p></div>' +
+      roundsSeg(V, isHost) +
       '<div class="seats">' + seats + '</div>' +
       (isHost
         ? '<button class="btn primary block" type="button" data-act="start"' + (ok && !S.busy ? '' : ' disabled') + '>' + (ok ? n + '명으로 ' + MODES[V.mode].name + ' 시작' : MODES[V.mode].name + '는 ' + min + '명부터 시작할 수 있어요 · ' + (min - n) + '명 더 필요') + '</button>'
@@ -333,11 +334,17 @@ footer.credit p.copy { font-size: 13.5px; color: var(--muted); letter-spacing: .
       '</div>';
   }
 
-  const STEPS = ['설명 1라운드', '설명 2라운드', '비밀 투표', '최종 판정'];
-  const stepOf = V => (V.phase === 'desc' ? V.round : V.phase === 'vote' ? 2 : 3);
+  const stepsOf = V => Array.from({ length: V.rounds }, (_, i) => (i + 1) + '라운드').concat(['비밀 투표', '최종 판정']);
+  const stepOf = V => (V.phase === 'desc' ? V.round : V.phase === 'vote' ? V.rounds : V.rounds + 1);
+
+  function roundsSeg(V, isHost) {
+    return '<div class="stack" style="gap:8px"><div class="label">설명 라운드 수' + (isHost ? ' (방장만 바꿀 수 있어요)' : '') + '</div><div class="seg" role="group" aria-label="라운드 수">' +
+      [1, 2, 3, 4, 5].map(k => '<button type="button" data-act="setrounds" data-n="' + k + '" aria-pressed="' + (V.roundsSetting === k) + '"' + (isHost && !S.busy ? '' : ' disabled') + '>' + k + '라운드</button>').join('') +
+      '</div><p class="muted" style="font-size:13.5px">라운드마다 발표 순서가 무작위로 새로 정해져요.</p></div>';
+  }
 
   function gameView(V) {
-    const step = stepOf(V), key = V.code + V.n;
+    const step = stepOf(V), STEPS = stepsOf(V), key = V.code + V.n;
     if (ui.cardKey !== key) { ui.cardKey = key; ui.cardOpen = false; ui.votePick = null; ui.guessPick = null; }
     const stepper = '<div class="stepper" role="list">' + STEPS.map((s, i) => '<div role="listitem" class="' + (i < step || V.phase === 'end' ? 'done' : i === step ? 'on' : '') + '">' + s + '</div>').join('') + '</div>';
     return stepper + '<div class="table"><aside class="stack">' + roleCard(V) + roster(V) + '</aside><section class="panel stack" style="gap:18px">' + mainPanel(V) + '</section></div>';
@@ -360,24 +367,27 @@ footer.credit p.copy { font-size: 13.5px; color: var(--muted); letter-spacing: .
       let st = '';
       if (V.phase === 'desc') st = i === V.turnSeat ? '설명 차례' : '';
       else if (V.phase === 'vote') st = V.voted[i] ? '투표 완료' : '투표 중';
+      else if (V.phase === 'tiebreak') st = i === V.breaker ? '최종 투표자' : V.ties.includes(i) ? '동률 후보' : '';
       else if (V.phase === 'guess') st = i === V.suspect ? '지목됨' : '';
-      const turn = (V.phase === 'desc' && i === V.turnSeat) || (V.phase === 'guess' && i === V.suspect);
+      const turn = (V.phase === 'desc' && i === V.turnSeat) || (V.phase === 'tiebreak' && i === V.breaker) || (V.phase === 'guess' && i === V.suspect);
       return '<div class="rp' + (turn ? ' turn' : '') + '"><span class="no">' + (i + 1) + '</span><span class="nm"><span class="live' + (p.online ? ' yes' : '') + '" title="' + (p.online ? '접속 중' : '접속 끊김') + '"></span>' + esc(p.nick) + (i === V.me ? ' <span class="tag me">나</span>' : '') + '</span><span class="st">' + st + '</span></div>';
     }).join('');
     const stop = V.host === V.me && V.phase !== 'end' ? '<button class="btn ghost small" type="button" data-act="abort" style="margin:8px 10px 4px">' + (ui.abort ? '한 번 더 누르면 중단돼요' : '게임 중단하고 대기실로') + '</button>' : '';
-    return '<div class="panel" style="padding:12px"><div class="label" style="padding:4px 10px 8px">설명 순서</div><div class="roster">' + rows + '</div>' + stop + '</div>';
+    return '<div class="panel" style="padding:12px"><div class="label" style="padding:4px 10px 8px">참가자</div><div class="roster">' + rows + '</div>' + stop + '</div>';
   }
 
   const waitBox = text => '<div class="status"><span class="dot"></span><p>' + text + '</p></div>';
 
   function descLog(V) {
     let out = '<div class="log">';
-    for (let r = 0; r < 2; r++) {
+    for (let r = 0; r < V.rounds; r++) {
+      const ord = V.orders[r];
+      if (!ord) { out += '<div class="round"><h3>' + (r + 1) + '라운드 · 발표 순서는 이 라운드가 시작될 때 공개돼요</h3></div>'; continue; }
       out += '<div class="round"><h3>' + (r + 1) + '라운드</h3><div class="lines">';
       for (let s = 0; s < V.size; s++) {
-        const k = r * V.size + s, d = V.desc[k], now = V.phase === 'desc' && V.turn === k;
+        const k = r * V.size + s, d = V.desc[k], now = V.phase === 'desc' && V.turn === k, who = ord[s];
         const txt = d ? esc(d.text) : now ? '작성 중…' : '차례 대기';
-        out += '<div class="line' + (d ? '' : ' pending') + (now ? ' now' : '') + '"><span class="no">' + (s + 1) + '</span><span class="who">' + esc(nick(V, s)) + '</span><span class="txt">' + txt + '</span></div>';
+        out += '<div class="line' + (d ? '' : ' pending') + (now ? ' now' : '') + '"><span class="no">' + (s + 1) + '</span><span class="who">' + esc(nick(V, who)) + '</span><span class="txt">' + txt + '</span></div>';
       }
       out += '</div></div>';
     }
@@ -388,7 +398,7 @@ footer.credit p.copy { font-size: 13.5px; color: var(--muted); letter-spacing: .
     const busy = S.busy ? ' disabled' : '';
     if (V.phase === 'desc') {
       const mine = V.turnSeat === V.me;
-      let top = '<div><span class="label">' + (V.round + 1) + '라운드 · ' + (V.turnSeat + 1) + '번 차례 · 전체 ' + (V.turn + 1) + ' / ' + (V.size * 2) + '</span><h2>' + (mine ? '내 차례예요. 한 줄로 설명하세요' : esc(nick(V, V.turnSeat)) + '님이 설명하고 있어요') + '</h2></div>';
+      let top = '<div><span class="label">' + (V.round + 1) + ' / ' + V.rounds + '라운드 · 전체 ' + (V.turn + 1) + ' / ' + (V.size * V.rounds) + '</span><h2>' + (mine ? '<span style="color:var(--mint)">' + esc(nick(V, V.turnSeat)) + '</span>님의 발표 차례입니다 (나)' : esc(nick(V, V.turnSeat)) + '님의 발표 차례입니다') + '</h2>' + (mine ? '<p class="muted">한 줄로 설명해 주세요.</p>' : '') + '</div>';
       if (mine) top += '<div class="stack" style="gap:8px"><div class="compose"><input type="text" id="desc" maxlength="' + V.maxDesc + '" placeholder="' + (V.card.role === 'liar' ? '시민인 척, 들키지 않게' : '제시어를 직접 말하지 않고') + '" autocomplete="off" enterkeyhint="send">' +
         '<button class="btn primary" type="button" data-act="describe"' + busy + '>제출</button></div><span class="count" id="desc-count">0 / ' + V.maxDesc + '</span></div>';
       return top + descLog(V);
@@ -402,6 +412,16 @@ footer.credit p.copy { font-size: 13.5px; color: var(--muted); letter-spacing: .
           '<button type="button" class="pick" data-act="pickvote" data-i="' + i + '" aria-pressed="' + (ui.votePick === i) + '"><span class="no">' + (i + 1) + '번</span><b>' + esc(p.nick) + '</b></button>').join('') + '</div>' +
           '<button class="btn primary block" type="button" data-act="vote"' + (ui.votePick === null || S.busy ? ' disabled' : '') + '>' + (ui.votePick === null ? '한 명을 골라 주세요' : esc(nick(V, ui.votePick)) + '님에게 투표하기') + '</button>';
       } else h += waitBox('남은 사람: ' + esc(names(V, left)) + '. 모두 투표하면 결과가 한꺼번에 공개돼요.');
+      return h + descLog(V);
+    }
+    if (V.phase === 'tiebreak') {
+      const mine = V.breaker === V.me;
+      let h = '<div><span class="label">동률 · 최종 투표</span><h2>' + (mine ? '당신이 최종 투표자예요' : esc(nick(V, V.breaker)) + '님이 최종 투표자예요') + '</h2></div>' + tallyView(V);
+      if (mine) {
+        h += '<div class="status mine">동률인 후보 중 라이어(바보)라고 생각하는 한 명을 골라 주세요. 이 선택이 최종 지목이 돼요.</div>' +
+          '<div class="picks">' + V.ties.map(i => '<button type="button" class="pick" data-act="pickvote" data-i="' + i + '" aria-pressed="' + (ui.votePick === i) + '"><span class="no">' + (i + 1) + '번</span><b>' + esc(nick(V, i)) + '</b></button>').join('') + '</div>' +
+          '<button class="btn primary block" type="button" data-act="tiebreak"' + (ui.votePick === null || S.busy ? ' disabled' : '') + '>' + (ui.votePick === null ? '한 명을 골라 주세요' : esc(nick(V, ui.votePick)) + '님으로 최종 결정') + '</button>';
+      } else h += waitBox(esc(names(V, V.ties)) + ' 동률이에요. 후보가 아닌 사람 중 무작위로 뽑힌 ' + esc(nick(V, V.breaker)) + '님이 최종 결정하는 중이에요.');
       return h + descLog(V);
     }
     if (V.phase === 'guess') {
@@ -420,7 +440,7 @@ footer.credit p.copy { font-size: 13.5px; color: var(--muted); letter-spacing: .
   function tallyView(V) {
     const max = Math.max(1, ...V.tally);
     return '<div class="tally">' + V.players.map((p, i) => '<div class="bar' + (i === V.suspect ? ' sus' : '') + '"><span class="nm">' + esc(p.nick) + '</span><span class="track"><span class="fill" style="width:' + (V.tally[i] / max * 100) + '%"></span></span><span class="v">' + V.tally[i] + '</span></div>').join('') + '</div>' +
-      (V.ties.length > 1 ? '<p class="muted" style="font-size:13px">' + esc(names(V, V.ties)) + ' 동점이라 무작위로 한 명을 골랐어요.</p>' : '');
+      (V.ties.length > 1 ? '<p class="muted" style="font-size:13px">' + esc(names(V, V.ties)) + ' 동률이라 ' + (V.phase === 'tiebreak' ? '' : esc(nick(V, V.breaker)) + '님이 최종 투표로 결정했어요.') + '</p>' : '');
   }
 
   const ROLE_NAME = { citizen: '시민', liar: '라이어', spy: '스파이', fool: '바보' };
@@ -437,6 +457,7 @@ footer.credit p.copy { font-size: 13.5px; color: var(--muted); letter-spacing: .
     }).join('') + '</div>';
     h += tallyView(V);
     const ok = V.players.length >= V.modes[V.mode].min;
+    h += roundsSeg(V, V.host === V.me);
     h += V.host === V.me
       ? '<div class="row"><button class="btn primary" type="button" data-act="restart"' + (S.busy || !ok ? ' disabled' : '') + '>같은 멤버로 다시 하기</button><button class="btn ghost" type="button" data-act="lobby"' + (S.busy ? ' disabled' : '') + '>대기실로 (모드 변경·인원 추가)</button></div>'
       : '<div class="row"><p class="muted" style="flex:1">방장이 다시 시작하면 새 판이 열려요.</p><button class="btn ghost" type="button" data-act="lobby"' + (S.busy ? ' disabled' : '') + '>대기실로</button></div>';
@@ -466,6 +487,8 @@ footer.credit p.copy { font-size: 13.5px; color: var(--muted); letter-spacing: .
   async function doAct(a, el) {
     switch (a) {
       case 'pickmode': ui.mode = el.dataset.mode; ls.set('liar.mode', ui.mode); return queue();
+      case 'setrounds': return send('rounds', { rounds: +el.dataset.n });
+      case 'tiebreak': if (ui.votePick !== null) await send('tiebreak', { target: ui.votePick }); return;
       case 'setmode': return send('mode', { mode: el.dataset.mode });
       case 'create': return enter('/api/create', { nick: val('nick'), mode: ui.mode });
       case 'join': return enter('/api/join', { nick: val('nick'), code: val('code') });

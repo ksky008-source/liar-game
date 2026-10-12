@@ -94,19 +94,28 @@ function checkSecrecy(R, mode) {
 }
 
 async function playDescriptions(R) {
-  const size = R.toks.length, g = rooms.get(R.code).game;
+  const size = R.toks.length, g = rooms.get(R.code).game, rounds = g.rounds;
+  assert.strictEqual(R.cl[0].view.rounds, rounds);
+  assert.strictEqual(R.cl[0].view.orders.length, 1, '시작할 때는 1라운드 순서만 공개');
+  const spoken = [];
   const notMe = (R.cl[0].view.turnSeat + 1) % size;
   await expectErr(act(R.toks[notMe], 'describe', { text: '새치기' }), /차례/, '차례 아닌 제출', true);
   const cit = g.roles.indexOf('citizen');
-  for (let k = 0; k < size * 2; k++) {
-    const s = k % size;
-    if (k === cit) await expectErr(act(R.toks[s], 'describe', { text: '정답은 ' + g.word }), /제시어/, '설명에 제시어 포함', true);
+  for (let k = 0; k < size * rounds; k++) {
+    const s = R.cl[0].view.turnSeat;
+    assert.strictEqual(s, g.orders[Math.floor(k / size)][k % size]);
+    assert.ok(R.cl.every(c => c.view.turnSeat === s), '모두에게 같은 발표자');
+    assert.strictEqual(R.cl[0].view.orders.length, Math.floor(k / size) + 1, '지난·현재 라운드 순서만 공개');
+    if (s === cit) await expectErr(act(R.toks[s], 'describe', { text: '정답은 ' + g.word }), /제시어/, '설명에 제시어 포함', true);
     const r = await act(R.toks[s], 'describe', { text: `${s + 1}번 ${Math.floor(k / size) + 1}라운드 설명` });
     assert.strictEqual(r.status, 200, JSON.stringify(r));
+    spoken.push(s);
     await until(() => R.cl.every(c => c.view.desc.length === k + 1), 'desc ' + k);
   }
   await until(() => R.cl.every(c => c.view.phase === 'vote'), 'vote phase');
-  assert.deepStrictEqual(R.cl[size - 1].view.desc.map(d => d.seat), [...Array(size).keys(), ...Array(size).keys()]);
+  for (let r = 0; r < rounds; r++) assert.deepStrictEqual([...spoken.slice(r * size, (r + 1) * size)].sort(), [...Array(size).keys()], r + 1 + '라운드: 모두 한 번씩 발표');
+  assert.deepStrictEqual(R.cl[0].view.orders, g.orders);
+  return g.orders;
 }
 
 async function vote(R, plan) {
@@ -120,12 +129,15 @@ async function vote(R, plan) {
       R.cl.forEach((c, j) => { assert.ok(!('tally' in c.view)); assert.strictEqual(c.view.myVote, j <= i ? plan[j] : null); });
     }
   }
-  await until(() => R.cl.every(c => c.view.phase === 'guess' || c.view.phase === 'end'), 'tally');
+  await until(() => R.cl.every(c => ['tiebreak', 'guess', 'end'].includes(c.view.phase)), 'tally');
 }
 
 /** 한 판을 처음부터 끝까지. target: 'guesser'(라이어/바보 지목) | 'other' | 'tie'; guess: 'right'|'wrong' */
-async function playRound(R, mode, n, target, guess) {
+async function playRound(R, mode, n, target, guess, rounds) {
   const size = R.toks.length;
+  assert.strictEqual((await act(R.toks[0], 'rounds', { rounds })).status, 200);
+  await until(() => R.cl.every(c => c.view.roundsSetting === rounds), 'rounds sync');
+  let tieLog = 0;
   assert.strictEqual((await act(R.toks[0], 'start')).status, 200);
   await until(() => R.cl.every(c => c.view.n === n && c.view.phase === 'desc'), 'start');
   const g = rooms.get(R.code).game;
@@ -139,10 +151,27 @@ async function playRound(R, mode, n, target, guess) {
   const guesser = g.roles.indexOf(mode === 'fool' ? 'fool' : 'liar');
   const other = mode === 'spy' && target === 'spy' ? g.roles.indexOf('spy') : g.roles.indexOf('citizen');
   let plan;
-  if (target === 'tie') plan = [...Array(size).keys()].map(i => (i % 2 === 0 ? (i + 1) % size : i - 1)).map((t, i) => (t === i ? (i + 1) % size : t));
+  if (target === 'tie2') plan = [...Array(size).keys()].map(i => (i === 0 ? 1 : i === 1 ? 0 : i % 2 === 0 ? 0 : 1));
+  else if (target === 'tie') plan = [...Array(size).keys()].map(i => (i % 2 === 0 ? (i + 1) % size : i - 1)).map((t, i) => (t === i ? (i + 1) % size : t));
   else { const tg = target === 'guesser' ? guesser : other; plan = [...Array(size).keys()].map(i => (i === tg ? (tg + 1) % size : tg)); }
   await vote(R, plan);
-  const T = R.cl[0].view;
+  let T = R.cl[0].view;
+  if (T.phase === 'tiebreak') {
+    assert.ok(T.ties.length > 1 && !T.ties.includes(T.breaker) === (T.ties.length < size), '최종 투표자는 후보가 아닌 사람(가능하면)');
+    assert.ok(R.cl.every(c => c.view.breaker === T.breaker && c.view.suspect === null));
+    const nb = (T.breaker + 1) % size;
+    await expectErr(act(R.toks[nb], 'tiebreak', { target: T.ties[0] }), /최종 투표자만/, '최종 투표자 아닌 사람의 결정', true);
+    await expectErr(act(R.toks[T.breaker], 'tiebreak', { target: T.breaker }), /동률 후보/, '자기 자신 선택', true);
+    const nonCand = [...Array(size).keys()].find(i => !T.ties.includes(i));
+    if (nonCand !== undefined) await expectErr(act(R.toks[T.breaker], 'tiebreak', { target: nonCand }), /동률 후보/, '후보가 아닌 사람 선택', true);
+    await expectErr(act(R.toks[T.breaker], 'tiebreak', { target: 'x' }), /동률 후보/, '잘못된 선택', true);
+    const pickable = T.ties.filter(i => i !== T.breaker);
+    const choose = pickable.includes(guesser) ? guesser : pickable[0];
+    assert.strictEqual((await act(R.toks[T.breaker], 'tiebreak', { target: choose })).status, 200);
+    await until(() => R.cl.every(c => ['guess', 'end'].includes(c.view.phase)), 'tiebreak done');
+    T = R.cl[0].view;
+    assert.strictEqual(T.suspect, choose); tieLog = 1;
+  }
   assert.ok(T.ties.includes(T.suspect));
   assert.ok(R.cl.every(c => c.view.suspect === T.suspect));
 
@@ -168,7 +197,7 @@ async function playRound(R, mode, n, target, guess) {
   }
   assert.strictEqual(res.winner, expect[0]); assert.strictEqual(res.label, expect[1]);
   checks++;
-  return { size, label: res.label, reason: res.reason, suspectRole: g.roles[T.suspect], tally: T.tally, ties: T.ties.length };
+  return { size, label: res.label, reason: res.reason, suspectRole: g.roles[T.suspect], tally: T.tally, ties: T.ties.length, tieLog, rounds };
 }
 
 (async () => {
@@ -189,6 +218,9 @@ async function playRound(R, mode, n, target, guess) {
   await expectErr(req('POST', '/api/join', { code: R8.code, nick: '서연' }), /가득|같은 닉네임/, '가득 찬 방 입장');
   await expectErr(act(R8.toks[3], 'start'), /방장/, '방장 아닌 사람이 시작');
   await expectErr(act(R8.toks[3], 'mode', { mode: 'spy' }), /방장/, '방장 아닌 사람이 모드 변경');
+  await expectErr(act(R8.toks[3], 'rounds', { rounds: 3 }), /방장/, '방장 아닌 사람이 라운드 변경');
+  for (const bad of [0, 6, 2.5, '3', null]) await expectErr(act(R8.toks[0], 'rounds', { rounds: bad }), /1~5라운드/, '잘못된 라운드 수 ' + JSON.stringify(bad));
+  assert.strictEqual(R8.cl[0].view.roundsSetting, 2, '기본 2라운드');
   await expectErr(act('가짜토큰', 'start'), /참가 정보/, '가짜 인증 정보');
   const stored = JSON.stringify([...rooms.values()].map(r => r.players));
   assert.ok(R8.toks.every(t => !stored.includes(t)) && R8.toks.every(t => !tokens.has(t)), '토큰 원문 미저장');
@@ -219,8 +251,9 @@ async function playRound(R, mode, n, target, guess) {
       const R = await makeRoom(mode, size);
       let n = 0;
       for (const [target, guess] of scen(size)) {
-        const r = await playRound(R, mode, ++n, target, guess);
-        summary.push(`${mode.padEnd(6)} ${size}명 · ${(target + (guess ? '/' + guess : '')).padEnd(14)} → ${r.label} (지목: ${r.suspectRole}${r.ties > 1 ? ', 동점 ' + r.ties + '명 중 무작위' : ''})`);
+        const rounds = (n + size) % 5 + 1; // 1~5라운드를 골고루
+        const r = await playRound(R, mode, ++n, target, guess, rounds);
+        summary.push(`${mode.padEnd(6)} ${size}명 ${r.rounds}라운드 · ${(target + (guess ? '/' + guess : '')).padEnd(14)} → ${r.label} (지목: ${r.suspectRole}${r.ties > 1 ? ', 동률 ' + r.ties + '명 → 최종 투표자 결정' : ''})`);
       }
       // 새로고침(재접속) 확인
       R.cl[1].res.destroy();
@@ -232,10 +265,11 @@ async function playRound(R, mode, n, target, guess) {
   };
   console.log('\n[모드별 전체 게임 진행]');
   await run('normal', [4, 5, 6, 7, 8], s => (s === 4 ? [['guesser', 'right'], ['guesser', 'wrong'], ['other'], ['tie', 'wrong']] : s === 8 ? [['guesser', 'wrong'], ['tie', 'right']] : [['guesser', 'wrong']]));
+  await run('normal', [6], () => [['tie2', 'wrong'], ['tie2', 'right']]);
   await run('fool', [4, 5, 6, 7, 8], s => (s === 4 ? [['guesser', 'right'], ['guesser', 'wrong'], ['other']] : s === 8 ? [['other'], ['tie', 'wrong']] : [['guesser', 'wrong']]));
   await run('spy', [5, 6, 7, 8], s => (s === 5 ? [['guesser', 'right'], ['guesser', 'wrong'], ['other'], ['spy']] : s === 8 ? [['guesser', 'wrong'], ['tie', 'right']] : [['other']]));
   summary.forEach(l => console.log('  ✓ ' + l));
-  console.log(`\n✓ 각 판마다: 역할 수 확인, 비밀 정보 비공개 확인, ${'2라운드 설명 순서'}, 차례·제시어·중복 투표·자기 투표 거부, 투표 완료 전 집계 비공개, 결과 공개`);
+  console.log(`\n✓ 각 판마다: 역할 수 확인, 비밀 정보 비공개 확인, 라운드별 무작위 발표 순서·동률 최종 투표, 차례·제시어·중복 투표·자기 투표 거부, 투표 완료 전 집계 비공개, 결과 공개`);
   console.log('✓ 매 인원마다 연결 끊김 → 재접속 후 같은 자리 복귀');
   console.log(`\n모든 테스트 통과 · 총 ${summary.length}판, 검증 ${checks}건`);
   process.exit(0);

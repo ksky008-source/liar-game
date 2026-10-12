@@ -11,6 +11,7 @@ const { WORDS, PAIRS } = require('./words');
 const PORT = Number(process.env.PORT) || 3000;
 const MAX_PLAYERS = 8;
 const MAX_DESC = 60;
+const MAX_ROUNDS = 5;
 const MAX_ROOMS = 500;
 const ROOM_IDLE_MS = 3 * 60 * 60 * 1000;
 const CODE_ABC = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -30,14 +31,14 @@ const MODES = {
  * @typedef {{seat: number, round: number, text: string}} Desc
  * @typedef {{winner: 'citizen'|'liar'|'fool', label: string, reason: string}} Outcome
  * @typedef {{
- *   n: number, mode: Mode, phase: 'desc'|'vote'|'guess'|'end', size: number,
+ *   n: number, mode: Mode, phase: 'desc'|'vote'|'tiebreak'|'guess'|'end', size: number, rounds: number, orders: number[][], breaker: number|null,
  *   category: string, word: string, foolWord: string|null, guessWords: string[],
  *   roles: Role[], turn: number, desc: Desc[], votes: (number|null)[],
  *   suspect: number|null, tally: number[]|null, ties: number[]|null,
  *   guess: string|null, outcome: Outcome|null
  * }} Game
  * @typedef {{
- *   code: string, mode: Mode, host: number, status: 'lobby'|'play',
+ *   code: string, mode: Mode, rounds: number, host: number, status: 'lobby'|'play',
  *   players: Player[], clients: Set<Client>, game: Game|null, touched: number
  * }} Room
  */
@@ -119,6 +120,7 @@ const playing = room => room.status === 'play' && !!room.game && room.game.phase
 // ---------------- 게임 로직 ----------------
 /** @param {Room} room */
 function startGame(room) {
+  const rounds = room.rounds;
   const size = room.players.length, mode = room.mode;
   if (size > MAX_PLAYERS) fail(`최대 ${MAX_PLAYERS}명까지 할 수 있어요.`);
   if (size < MODES[mode].min) fail(`${MODES[mode].name}는 ${MODES[mode].min}명 이상이어야 시작할 수 있어요. (지금 ${size}명)`);
@@ -142,7 +144,8 @@ function startGame(room) {
   if (mode === 'spy') { roles[order[0]] = 'liar'; roles[order[1]] = 'spy'; }
 
   room.game = {
-    n: (room.game ? room.game.n : 0) + 1, mode, phase: 'desc', size,
+    n: (room.game ? room.game.n : 0) + 1, mode, phase: 'desc', size, rounds,
+    orders: Array.from({ length: rounds }, () => shuffle([...Array(size).keys()])), breaker: null,
     category, word, foolWord, guessWords: shuffle(guessWords),
     roles, turn: 0, desc: [], votes: Array(size).fill(null),
     suspect: null, tally: null, ties: null, guess: null, outcome: null,
@@ -158,6 +161,8 @@ function wordOf(g, seat) {
   return g.word;
 }
 /** 최종 추측을 하는 역할 @param {Game} g */
+/** 지금 발표할 사람의 자리 @param {Game} g */
+const speaker = g => g.orders[Math.floor(g.turn / g.size)][g.turn % g.size];
 const guesserRole = g => (g.mode === 'fool' ? 'fool' : 'liar');
 
 /** @param {Game} g @param {Outcome['winner']} winner @param {string} reason */
@@ -168,20 +173,29 @@ function endGame(g, winner, reason) {
   g.phase = 'end'; g.outcome = { winner, label, reason };
 }
 
-/** @param {Game} g */
-function finishVotes(g) {
-  const tally = Array(g.size).fill(0);
-  g.votes.forEach(t => { if (t !== null) tally[t]++; });
-  const max = Math.max(...tally);
-  const ties = tally.map((v, i) => (v === max ? i : -1)).filter(i => i >= 0);
-  g.tally = tally; g.ties = ties;
-  const suspect = ties[rint(ties.length)];
+/** 지목된 사람이 정해진 뒤의 판정 @param {Game} g @param {number} suspect */
+function judge(g, suspect) {
   g.suspect = suspect;
   const role = g.roles[suspect];
   if (role === guesserRole(g)) { g.phase = 'guess'; return; }
   if (g.mode === 'fool') endGame(g, 'fool', '바보가 아닌 사람이 지목돼서 바보가 이겼어요.');
   else if (g.mode === 'spy') endGame(g, 'liar', role === 'spy' ? '스파이가 지목됐어요. 라이어는 끝까지 숨었어요.' : '시민이 라이어로 잘못 지목됐어요.');
   else endGame(g, 'liar', '시민이 라이어로 잘못 지목됐어요.');
+}
+
+/** 투표 집계. 동률이면 무작위로 뽑힌 '최종 투표자'가 결정합니다. @param {Game} g */
+function finishVotes(g) {
+  const tally = Array(g.size).fill(0);
+  g.votes.forEach(t => { if (t !== null) tally[t]++; });
+  const max = Math.max(...tally);
+  const ties = tally.map((v, i) => (v === max ? i : -1)).filter(i => i >= 0);
+  g.tally = tally; g.ties = ties;
+  if (ties.length === 1) { judge(g, ties[0]); return; }
+  // 동률 후보가 아닌 사람 중에서 최종 투표자를 뽑습니다. (모두가 후보면 전체에서)
+  const others = [...Array(g.size).keys()].filter(i => !ties.includes(i));
+  const pool = others.length ? others : [...Array(g.size).keys()];
+  g.breaker = pool[rint(pool.length)];
+  g.phase = 'tiebreak';
 }
 
 /** @typedef {{room: Room, seat: number, player: Player}} Ctx */
@@ -193,6 +207,14 @@ const actions = {
     if (playing(room)) fail('게임 중에는 모드를 바꿀 수 없어요.');
     room.mode = checkMode(body.mode);
   },
+  rounds(ctx, body) {
+    const { room, seat } = ctx;
+    if (room.host !== seat) fail('라운드 수는 방장만 바꿀 수 있어요.');
+    if (playing(room)) fail('게임 중에는 라운드 수를 바꿀 수 없어요.');
+    const n = body.rounds;
+    if (!Number.isInteger(n) || n < 1 || n > MAX_ROUNDS) fail(`라운드는 1~${MAX_ROUNDS}라운드 중에서 골라 주세요.`);
+    room.rounds = n;
+  },
   start(ctx) {
     const { room, seat } = ctx;
     if (room.host !== seat) fail('방장만 시작할 수 있어요.');
@@ -202,7 +224,7 @@ const actions = {
   describe(ctx, body) {
     const { room, seat } = ctx, g = room.game;
     if (!g || !playing(room) || g.phase !== 'desc') return fail('지금은 설명 단계가 아니에요.');
-    if (g.turn % g.size !== seat) fail('아직 내 차례가 아니에요.');
+    if (speaker(g) !== seat) fail('아직 내 차례가 아니에요.');
     const text = cleanText(body.text);
     if (!text) fail('설명을 한 줄 써 주세요.');
     if (len(text) > MAX_DESC) fail(`설명은 ${MAX_DESC}자 이하로 써 주세요.`);
@@ -210,7 +232,7 @@ const actions = {
     if (mine && saysWord(text, mine)) fail('제시어를 그대로 쓰면 안 돼요. 돌려서 설명해 주세요.');
     g.desc.push({ seat, round: Math.floor(g.turn / g.size), text });
     g.turn++;
-    if (g.turn >= g.size * 2) g.phase = 'vote';
+    if (g.turn >= g.size * g.rounds) g.phase = 'vote';
   },
   vote(ctx, body) {
     const { room, seat } = ctx, g = room.game;
@@ -221,6 +243,14 @@ const actions = {
     if (t === seat) fail('자기 자신에게는 투표할 수 없어요.');
     g.votes[seat] = t;
     if (g.votes.every(v => v !== null)) finishVotes(g);
+  },
+  tiebreak(ctx, body) {
+    const { room, seat } = ctx, g = room.game;
+    if (!g || !playing(room) || g.phase !== 'tiebreak') return fail('지금은 최종 투표 단계가 아니에요.');
+    if (seat !== g.breaker) fail('최종 투표자만 고를 수 있어요.');
+    const t = body.target;
+    if (!Number.isInteger(t) || !g.ties || !g.ties.includes(t) || t === seat) fail('동률 후보 중에서 한 명을 골라 주세요.');
+    judge(g, t);
   },
   guess(ctx, body) {
     const { room, seat } = ctx, g = room.game;
@@ -265,11 +295,12 @@ function viewFor(room, seat) {
   const online = new Set([...room.clients].map(c => c.pid));
   /** @type {Record<string, any>} */
   const v = {
-    code: room.code, me: seat, host: room.host, status: room.status, mode: room.mode,
+    code: room.code, me: seat, host: room.host, status: room.status, mode: room.mode, roundsSetting: room.rounds, maxRounds: MAX_ROUNDS,
     modes: MODES, maxPlayers: MAX_PLAYERS, maxDesc: MAX_DESC,
     players: room.players.map(p => ({ nick: p.nick, online: online.has(p.pid) })),
   };
   const g = room.game;
+  v.rounds = room.rounds;
   if (room.status !== 'play' || !g) return v;
   const role = g.roles[seat];
   /** @type {Record<string, any>} */
@@ -279,11 +310,12 @@ function viewFor(room, seat) {
   else card = { role: 'citizen', word: wordOf(g, seat) }; // 바보도 결과 전까지 '시민'으로 보입니다
   Object.assign(v, {
     n: g.n, mode: g.mode, phase: g.phase, size: g.size, category: g.category, card,
-    turn: g.turn, turnSeat: g.phase === 'desc' ? g.turn % g.size : null, round: Math.floor(g.turn / g.size),
+    turn: g.turn, turnSeat: g.phase === 'desc' ? speaker(g) : null, round: Math.min(Math.floor(g.turn / g.size), g.rounds - 1),
+    rounds: g.rounds, orders: g.phase === 'desc' ? g.orders.slice(0, Math.floor(g.turn / g.size) + 1) : g.orders,
     desc: g.desc, voted: g.votes.map(x => x !== null), myVote: g.votes[seat],
   });
-  if (g.phase === 'guess' || g.phase === 'end') {
-    Object.assign(v, { tally: g.tally, ties: g.ties, suspect: g.suspect });
+  if (g.phase === 'tiebreak' || g.phase === 'guess' || g.phase === 'end') {
+    Object.assign(v, { tally: g.tally, ties: g.ties, suspect: g.suspect, breaker: g.breaker });
     if (g.phase === 'guess' && seat === g.suspect) v.guessWords = g.guessWords;
   }
   if (g.phase === 'end' && g.outcome) {
@@ -372,7 +404,7 @@ const server = http.createServer(async (req, res) => {
       const mode = checkMode(body.mode);
       if (rooms.size >= MAX_ROOMS) fail('지금은 방이 너무 많아요. 잠시 후 다시 시도해 주세요.', 503);
       /** @type {Room} */
-      const room = { code: newCode(), mode, host: 0, status: 'lobby', players: [], clients: new Set(), game: null, touched: Date.now() };
+      const room = { code: newCode(), mode, rounds: 2, host: 0, status: 'lobby', players: [], clients: new Set(), game: null, touched: Date.now() };
       rooms.set(room.code, room);
       const token = addPlayer(room, nick);
       return send(res, 200, { token, code: room.code });
