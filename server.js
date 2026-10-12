@@ -31,7 +31,8 @@ const MODES = {
  * @typedef {{seat: number, round: number, text: string}} Desc
  * @typedef {{winner: 'citizen'|'liar'|'fool', label: string, reason: string}} Outcome
  * @typedef {{
- *   n: number, mode: Mode, phase: 'desc'|'vote'|'tiebreak'|'guess'|'end', size: number, rounds: number, orders: number[][], breaker: number|null,
+ *   n: number, mode: Mode, phase: 'desc'|'vote'|'revote'|'guess'|'end', size: number, rounds: number, orders: number[][],
+ *   votes2: (number|null)[], tally2: number[]|null, ties2: number[]|null, auto: 'caught'|'missed'|null,
  *   category: string, word: string, foolWord: string|null, guessWords: string[],
  *   roles: Role[], turn: number, desc: Desc[], votes: (number|null)[],
  *   suspect: number|null, tally: number[]|null, ties: number[]|null,
@@ -145,7 +146,8 @@ function startGame(room) {
 
   room.game = {
     n: (room.game ? room.game.n : 0) + 1, mode, phase: 'desc', size, rounds,
-    orders: Array.from({ length: rounds }, () => shuffle([...Array(size).keys()])), breaker: null,
+    orders: Array.from({ length: rounds }, () => shuffle([...Array(size).keys()])),
+    votes2: Array(size).fill(null), tally2: null, ties2: null, auto: null,
     category, word, foolWord, guessWords: shuffle(guessWords),
     roles, turn: 0, desc: [], votes: Array(size).fill(null),
     suspect: null, tally: null, ties: null, guess: null, outcome: null,
@@ -183,19 +185,30 @@ function judge(g, suspect) {
   else endGame(g, 'liar', '시민이 라이어로 잘못 지목됐어요.');
 }
 
-/** 투표 집계. 동률이면 무작위로 뽑힌 '최종 투표자'가 결정합니다. @param {Game} g */
-function finishVotes(g) {
-  const tally = Array(g.size).fill(0);
-  g.votes.forEach(t => { if (t !== null) tally[t]++; });
+/** @param {(number|null)[]} votes @param {number} size @returns {{tally: number[], ties: number[]}} */
+function count(votes, size) {
+  const tally = Array(size).fill(0);
+  votes.forEach(t => { if (t !== null) tally[t]++; });
   const max = Math.max(...tally);
-  const ties = tally.map((v, i) => (v === max ? i : -1)).filter(i => i >= 0);
+  return { tally, ties: tally.map((v, i) => (v === max ? i : -1)).filter(i => i >= 0) };
+}
+
+/** 1차 투표 집계. 동률이면 동률 후보끼리 2차 투표를 합니다. @param {Game} g */
+function finishVotes(g) {
+  const { tally, ties } = count(g.votes, g.size);
   g.tally = tally; g.ties = ties;
   if (ties.length === 1) { judge(g, ties[0]); return; }
-  // 동률 후보가 아닌 사람 중에서 최종 투표자를 뽑습니다. (모두가 후보면 전체에서)
-  const others = [...Array(g.size).keys()].filter(i => !ties.includes(i));
-  const pool = others.length ? others : [...Array(g.size).keys()];
-  g.breaker = pool[rint(pool.length)];
-  g.phase = 'tiebreak';
+  g.phase = 'revote';
+}
+
+/** 2차 투표 집계. 또 동률이면: 동률 후보 중에 라이어(바보)가 있으면 맞힌 것으로 칩니다. @param {Game} g */
+function finishRevote(g) {
+  const { tally, ties } = count(g.votes2, g.size);
+  g.tally2 = tally; g.ties2 = ties;
+  if (ties.length === 1) { judge(g, ties[0]); return; }
+  const hit = ties.find(i => g.roles[i] === guesserRole(g));
+  g.auto = hit !== undefined ? 'caught' : 'missed';
+  judge(g, hit !== undefined ? hit : ties[rint(ties.length)]);
 }
 
 /** @typedef {{room: Room, seat: number, player: Player}} Ctx */
@@ -236,21 +249,15 @@ const actions = {
   },
   vote(ctx, body) {
     const { room, seat } = ctx, g = room.game;
-    if (!g || !playing(room) || g.phase !== 'vote') return fail('지금은 투표 단계가 아니에요.');
-    if (g.votes[seat] !== null) fail('이미 투표했어요.');
+    if (!g || !playing(room) || (g.phase !== 'vote' && g.phase !== 'revote')) return fail('지금은 투표 단계가 아니에요.');
+    const second = g.phase === 'revote', arr = second ? g.votes2 : g.votes;
+    if (arr[seat] !== null) fail('이미 투표했어요.');
     const t = body.target;
     if (!Number.isInteger(t) || t < 0 || t >= g.size) fail('투표할 사람을 골라 주세요.');
     if (t === seat) fail('자기 자신에게는 투표할 수 없어요.');
-    g.votes[seat] = t;
-    if (g.votes.every(v => v !== null)) finishVotes(g);
-  },
-  tiebreak(ctx, body) {
-    const { room, seat } = ctx, g = room.game;
-    if (!g || !playing(room) || g.phase !== 'tiebreak') return fail('지금은 최종 투표 단계가 아니에요.');
-    if (seat !== g.breaker) fail('최종 투표자만 고를 수 있어요.');
-    const t = body.target;
-    if (!Number.isInteger(t) || !g.ties || !g.ties.includes(t) || t === seat) fail('동률 후보 중에서 한 명을 골라 주세요.');
-    judge(g, t);
+    if (second && !(g.ties || []).includes(t)) fail('2차 투표는 동률 후보 중에서만 고를 수 있어요.');
+    arr[seat] = t;
+    if (arr.every(v => v !== null)) (second ? finishRevote : finishVotes)(g);
   },
   guess(ctx, body) {
     const { room, seat } = ctx, g = room.game;
@@ -312,15 +319,16 @@ function viewFor(room, seat) {
     n: g.n, mode: g.mode, phase: g.phase, size: g.size, category: g.category, card,
     turn: g.turn, turnSeat: g.phase === 'desc' ? speaker(g) : null, round: Math.min(Math.floor(g.turn / g.size), g.rounds - 1),
     rounds: g.rounds, orders: g.phase === 'desc' ? g.orders.slice(0, Math.floor(g.turn / g.size) + 1) : g.orders,
-    desc: g.desc, voted: g.votes.map(x => x !== null), myVote: g.votes[seat],
+    desc: g.desc, voted: (g.phase === 'revote' ? g.votes2 : g.votes).map(x => x !== null),
+    myVote: g.phase === 'revote' ? g.votes2[seat] : g.votes[seat],
   });
-  if (g.phase === 'tiebreak' || g.phase === 'guess' || g.phase === 'end') {
-    Object.assign(v, { tally: g.tally, ties: g.ties, suspect: g.suspect, breaker: g.breaker });
+  if (g.phase === 'revote' || g.phase === 'guess' || g.phase === 'end') {
+    Object.assign(v, { tally: g.tally, ties: g.ties, suspect: g.suspect, tally2: g.tally2, ties2: g.ties2, auto: g.auto });
     if (g.phase === 'guess' && seat === g.suspect) v.guessWords = g.guessWords;
   }
   if (g.phase === 'end' && g.outcome) {
     v.result = Object.assign({}, g.outcome, {
-      roles: g.roles, word: g.word, foolWord: g.foolWord, votes: g.votes, guess: g.guess,
+      roles: g.roles, word: g.word, foolWord: g.foolWord, votes: g.votes, votes2: g.ties && g.ties.length > 1 ? g.votes2 : null, guess: g.guess,
       words: g.roles.map((_, i) => wordOf(g, i)),
     });
   }

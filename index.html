@@ -335,7 +335,7 @@ footer.credit p.copy { font-size: 13.5px; color: var(--muted); letter-spacing: .
   }
 
   const stepsOf = V => Array.from({ length: V.rounds }, (_, i) => (i + 1) + '라운드').concat(['비밀 투표', '최종 판정']);
-  const stepOf = V => (V.phase === 'desc' ? V.round : V.phase === 'vote' ? V.rounds : V.rounds + 1);
+  const stepOf = V => (V.phase === 'desc' ? V.round : V.phase === 'vote' || V.phase === 'revote' ? V.rounds : V.rounds + 1);
 
   function roundsSeg(V, isHost) {
     return '<div class="stack" style="gap:8px"><div class="label">설명 라운드 수' + (isHost ? ' (방장만 바꿀 수 있어요)' : '') + '</div><div class="seg" role="group" aria-label="라운드 수">' +
@@ -367,9 +367,9 @@ footer.credit p.copy { font-size: 13.5px; color: var(--muted); letter-spacing: .
       let st = '';
       if (V.phase === 'desc') st = i === V.turnSeat ? '설명 차례' : '';
       else if (V.phase === 'vote') st = V.voted[i] ? '투표 완료' : '투표 중';
-      else if (V.phase === 'tiebreak') st = i === V.breaker ? '최종 투표자' : V.ties.includes(i) ? '동률 후보' : '';
+      else if (V.phase === 'revote') st = V.voted[i] ? '투표 완료' : V.ties.includes(i) ? '동률 후보' : '투표 중';
       else if (V.phase === 'guess') st = i === V.suspect ? '지목됨' : '';
-      const turn = (V.phase === 'desc' && i === V.turnSeat) || (V.phase === 'tiebreak' && i === V.breaker) || (V.phase === 'guess' && i === V.suspect);
+      const turn = (V.phase === 'desc' && i === V.turnSeat) || (V.phase === 'guess' && i === V.suspect);
       return '<div class="rp' + (turn ? ' turn' : '') + '"><span class="no">' + (i + 1) + '</span><span class="nm"><span class="live' + (p.online ? ' yes' : '') + '" title="' + (p.online ? '접속 중' : '접속 끊김') + '"></span>' + esc(p.nick) + (i === V.me ? ' <span class="tag me">나</span>' : '') + '</span><span class="st">' + st + '</span></div>';
     }).join('');
     const stop = V.host === V.me && V.phase !== 'end' ? '<button class="btn ghost small" type="button" data-act="abort" style="margin:8px 10px 4px">' + (ui.abort ? '한 번 더 누르면 중단돼요' : '게임 중단하고 대기실로') + '</button>' : '';
@@ -403,29 +403,22 @@ footer.credit p.copy { font-size: 13.5px; color: var(--muted); letter-spacing: .
         '<button class="btn primary" type="button" data-act="describe"' + busy + '>제출</button></div><span class="count" id="desc-count">0 / ' + V.maxDesc + '</span></div>';
       return top + descLog(V);
     }
-    if (V.phase === 'vote') {
+    if (V.phase === 'vote' || V.phase === 'revote') {
+      const re = V.phase === 'revote', cand = i => i !== V.me && (!re || V.ties.includes(i));
+      if (ui.votePick !== null && !cand(ui.votePick)) ui.votePick = null;
       const voted = V.myVote !== null, done = V.voted.filter(Boolean).length;
       const left = V.voted.map((x, i) => (x ? -1 : i)).filter(i => i >= 0);
-      let h = '<div class="row" style="justify-content:space-between"><div><span class="label">비밀 투표</span><h2>' + (voted ? esc(nick(V, V.myVote)) + '님에게 투표했어요' : '의심 가는 사람을 한 명 고르세요') + '</h2></div><span class="progress">투표 완료 ' + done + ' / ' + V.size + '</span></div>';
+      let h = '<div class="row" style="justify-content:space-between"><div><span class="label">' + (re ? '2차 투표 · 동률 후보 중에서' : '비밀 투표') + '</span><h2>' + (voted ? esc(nick(V, V.myVote)) + '님에게 투표했어요' : re ? '동률 후보 중 한 명을 고르세요' : '의심 가는 사람을 한 명 고르세요') + '</h2></div><span class="progress">투표 완료 ' + done + ' / ' + V.size + '</span></div>';
       if (!voted) {
-        h += '<div class="picks">' + V.players.map((p, i) => i === V.me ? '' :
+        h += '<div class="picks">' + V.players.map((p, i) => !cand(i) ? '' :
           '<button type="button" class="pick" data-act="pickvote" data-i="' + i + '" aria-pressed="' + (ui.votePick === i) + '"><span class="no">' + (i + 1) + '번</span><b>' + esc(p.nick) + '</b></button>').join('') + '</div>' +
           '<button class="btn primary block" type="button" data-act="vote"' + (ui.votePick === null || S.busy ? ' disabled' : '') + '>' + (ui.votePick === null ? '한 명을 골라 주세요' : esc(nick(V, ui.votePick)) + '님에게 투표하기') + '</button>';
       } else h += waitBox('남은 사람: ' + esc(names(V, left)) + '. 모두 투표하면 결과가 한꺼번에 공개돼요.');
-      return h + descLog(V);
-    }
-    if (V.phase === 'tiebreak') {
-      const mine = V.breaker === V.me;
-      let h = '<div><span class="label">동률 · 최종 투표</span><h2>' + (mine ? '당신이 최종 투표자예요' : esc(nick(V, V.breaker)) + '님이 최종 투표자예요') + '</h2></div>' + tallyView(V);
-      if (mine) {
-        h += '<div class="status mine">동률인 후보 중 라이어(바보)라고 생각하는 한 명을 골라 주세요. 이 선택이 최종 지목이 돼요.</div>' +
-          '<div class="picks">' + V.ties.map(i => '<button type="button" class="pick" data-act="pickvote" data-i="' + i + '" aria-pressed="' + (ui.votePick === i) + '"><span class="no">' + (i + 1) + '번</span><b>' + esc(nick(V, i)) + '</b></button>').join('') + '</div>' +
-          '<button class="btn primary block" type="button" data-act="tiebreak"' + (ui.votePick === null || S.busy ? ' disabled' : '') + '>' + (ui.votePick === null ? '한 명을 골라 주세요' : esc(nick(V, ui.votePick)) + '님으로 최종 결정') + '</button>';
-      } else h += waitBox(esc(names(V, V.ties)) + ' 동률이에요. 후보가 아닌 사람 중 무작위로 뽑힌 ' + esc(nick(V, V.breaker)) + '님이 최종 결정하는 중이에요.');
+      if (re) h = tallyView(V, V.tally, '1차 투표 결과') + '<p class="muted" style="font-size:13px">' + esc(names(V, V.ties)) + ' 동률이에요. 이 중에서 다시 투표해요.</p>' + h;
       return h + descLog(V);
     }
     if (V.phase === 'guess') {
-      let h = '<div><span class="label">최종 판정</span><h2>' + esc(nick(V, V.suspect)) + '님이 지목됐어요</h2></div>' + tallyView(V);
+      let h = '<div><span class="label">최종 판정</span><h2>' + esc(nick(V, V.suspect)) + '님이 지목됐어요</h2></div>' + tallies(V);
       if (V.guessWords) {
         const who = V.mode === 'fool' ? '당신은 사실 <b>바보</b>였어요! 다른 사람들은 다른 제시어를 받았어요. 시민들의 진짜 제시어를 맞히면 역전승이에요.' : '마지막 기회예요. 제시어를 맞히면 라이어 쪽이 이겨요.';
         h += '<div class="status mine">' + who + ' 카테고리 <b>' + esc(V.category) + '</b>에서 하나를 고르세요.</div>' +
@@ -437,10 +430,21 @@ footer.credit p.copy { font-size: 13.5px; color: var(--muted); letter-spacing: .
     return endView(V);
   }
 
-  function tallyView(V) {
-    const max = Math.max(1, ...V.tally);
-    return '<div class="tally">' + V.players.map((p, i) => '<div class="bar' + (i === V.suspect ? ' sus' : '') + '"><span class="nm">' + esc(p.nick) + '</span><span class="track"><span class="fill" style="width:' + (V.tally[i] / max * 100) + '%"></span></span><span class="v">' + V.tally[i] + '</span></div>').join('') + '</div>' +
-      (V.ties.length > 1 ? '<p class="muted" style="font-size:13px">' + esc(names(V, V.ties)) + ' 동률이라 ' + (V.phase === 'tiebreak' ? '' : esc(nick(V, V.breaker)) + '님이 최종 투표로 결정했어요.') + '</p>' : '');
+  function tallyView(V, t, title) {
+    t = t || V.tally;
+    const max = Math.max(1, ...t);
+    return (title ? '<div class="label">' + title + '</div>' : '') + '<div class="tally">' + V.players.map((p, i) => '<div class="bar' + (i === V.suspect ? ' sus' : '') + '"><span class="nm">' + esc(p.nick) + '</span><span class="track"><span class="fill" style="width:' + (t[i] / max * 100) + '%"></span></span><span class="v">' + t[i] + '</span></div>').join('') + '</div>';
+  }
+  /** 1차(+2차) 투표 결과와 동률 처리 설명 */
+  function tallies(V) {
+    const two = V.ties.length > 1;
+    let h = tallyView(V, V.tally, two ? '1차 투표 결과' : '');
+    if (two) {
+      h += '<p class="muted" style="font-size:13px">' + esc(names(V, V.ties)) + ' 동률이라 2차 투표를 했어요.</p>' + tallyView(V, V.tally2, '2차 투표 결과');
+      if (V.auto === 'caught') h += '<p class="muted" style="font-size:13px">2차에서도 ' + esc(names(V, V.ties2)) + ' 동률이에요. 이 중에 ' + (V.mode === 'fool' ? '바보' : '라이어') + '가 있어서 맞힌 것으로 처리했어요.</p>';
+      else if (V.auto === 'missed') h += '<p class="muted" style="font-size:13px">2차에서도 ' + esc(names(V, V.ties2)) + ' 동률이고, 이 중에 ' + (V.mode === 'fool' ? '바보' : '라이어') + '가 없어서 못 맞힌 것으로 처리했어요.</p>';
+    }
+    return h;
   }
 
   const ROLE_NAME = { citizen: '시민', liar: '라이어', spy: '스파이', fool: '바보' };
@@ -453,9 +457,9 @@ footer.credit p.copy { font-size: 13.5px; color: var(--muted); letter-spacing: .
       (R.guess !== null ? '<p class="muted">마지막 추측: <b style="color:var(--fg)">' + esc(R.guess) + '</b></p>' : '') + '</div>';
     h += '<div class="reveal">' + V.players.map((p, i) => {
       const r = R.roles[i];
-      return '<div class="seat r-' + r + '"><span class="no">' + (i + 1) + '번</span><span class="nm">' + esc(p.nick) + '</span><span class="role">' + ROLE_NAME[r] + (i === V.suspect ? ' · 지목됨' : '') + '</span><small>' + (R.words[i] ? '제시어 ' + esc(R.words[i]) : '제시어 없음') + '</small><small>투표 → ' + esc(nick(V, R.votes[i])) + '</small></div>';
+      return '<div class="seat r-' + r + '"><span class="no">' + (i + 1) + '번</span><span class="nm">' + esc(p.nick) + '</span><span class="role">' + ROLE_NAME[r] + (i === V.suspect ? ' · 지목됨' : '') + '</span><small>' + (R.words[i] ? '제시어 ' + esc(R.words[i]) : '제시어 없음') + '</small><small>투표 → ' + esc(nick(V, R.votes[i])) + (R.votes2 && R.votes2[i] !== null ? ' → ' + esc(nick(V, R.votes2[i])) : '') + '</small></div>';
     }).join('') + '</div>';
-    h += tallyView(V);
+    h += tallies(V);
     const ok = V.players.length >= V.modes[V.mode].min;
     h += roundsSeg(V, V.host === V.me);
     h += V.host === V.me
@@ -488,7 +492,6 @@ footer.credit p.copy { font-size: 13.5px; color: var(--muted); letter-spacing: .
     switch (a) {
       case 'pickmode': ui.mode = el.dataset.mode; ls.set('liar.mode', ui.mode); return queue();
       case 'setrounds': return send('rounds', { rounds: +el.dataset.n });
-      case 'tiebreak': if (ui.votePick !== null) await send('tiebreak', { target: ui.votePick }); return;
       case 'setmode': return send('mode', { mode: el.dataset.mode });
       case 'create': return enter('/api/create', { nick: val('nick'), mode: ui.mode });
       case 'join': return enter('/api/join', { nick: val('nick'), code: val('code') });
