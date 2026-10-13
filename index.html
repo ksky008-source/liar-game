@@ -418,7 +418,7 @@ footer.credit p.copy { font-size: 13.5px; color: var(--muted); letter-spacing: .
       return h + descLog(V);
     }
     if (V.phase === 'guess') {
-      let h = '<div><span class="label">최종 판정</span><h2>' + esc(nick(V, V.suspect)) + '님이 지목됐어요</h2></div>' + tallies(V);
+      let h = '<div><span class="label">최종 판정</span><h2>' + esc(nick(V, V.suspect)) + '님이 지목됐어요</h2></div>' + tallies(V) + (V.guessWords ? '<div class="label">라운드별 설명 · 참고하세요</div>' : '<div class="label">라운드별 설명</div>') + descLog(V);
       if (V.guessWords) {
         const who = V.mode === 'fool' ? '당신은 사실 <b>바보</b>였어요! 다른 사람들은 다른 제시어를 받았어요. 시민들의 진짜 제시어를 맞히면 역전승이에요.' : '마지막 기회예요. 제시어를 맞히면 라이어 쪽이 이겨요.';
         h += '<div class="status mine">' + who + ' 카테고리 <b>' + esc(V.category) + '</b>에서 하나를 고르세요.</div>' +
