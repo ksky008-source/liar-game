@@ -7,6 +7,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { WORDS, PAIRS } = require('./words');
+const VERSION = require('./package.json').version;
 
 const PORT = Number(process.env.PORT) || 3000;
 const MAX_PLAYERS = 8;
@@ -411,7 +412,7 @@ const server = http.createServer(async (req, res) => {
       fs.createReadStream(INDEX).pipe(res);
       return;
     }
-    if (req.method === 'GET' && url.pathname === '/healthz') return send(res, 200, { ok: true, rooms: rooms.size });
+    if (req.method === 'GET' && url.pathname === '/healthz') return send(res, 200, { ok: true, version: VERSION, guessMs: GUESS_MS, rooms: rooms.size });
 
     if (req.method === 'GET' && url.pathname === '/api/events') {
       const { room, player } = auth(url.searchParams.get('token'));
