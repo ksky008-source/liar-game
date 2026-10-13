@@ -12,6 +12,8 @@ const PORT = Number(process.env.PORT) || 3000;
 const MAX_PLAYERS = 8;
 const MAX_DESC = 60;
 const MAX_ROUNDS = 5;
+/** 정답을 고르는 제한 시간(ms). 시험에서만 LIAR_GUESS_MS로 줄입니다. */
+const GUESS_MS = Number(process.env.LIAR_GUESS_MS) || 60000;
 const MAX_ROOMS = 500;
 const ROOM_IDLE_MS = 3 * 60 * 60 * 1000;
 const CODE_ABC = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -32,7 +34,7 @@ const MODES = {
  * @typedef {{winner: 'citizen'|'liar'|'fool', label: string, reason: string}} Outcome
  * @typedef {{
  *   n: number, mode: Mode, phase: 'desc'|'vote'|'revote'|'guess'|'end', size: number, rounds: number, orders: number[][],
- *   votes2: (number|null)[], tally2: number[]|null, ties2: number[]|null, auto: 'caught'|'missed'|null,
+ *   deadline: number|null, votes2: (number|null)[], tally2: number[]|null, ties2: number[]|null, auto: 'caught'|'missed'|null,
  *   category: string, word: string, foolWord: string|null, guessWords: string[],
  *   roles: Role[], turn: number, desc: Desc[], votes: (number|null)[],
  *   suspect: number|null, tally: number[]|null, ties: number[]|null,
@@ -147,7 +149,7 @@ function startGame(room) {
   room.game = {
     n: (room.game ? room.game.n : 0) + 1, mode, phase: 'desc', size, rounds,
     orders: Array.from({ length: rounds }, () => shuffle([...Array(size).keys()])),
-    votes2: Array(size).fill(null), tally2: null, ties2: null, auto: null,
+    deadline: null, votes2: Array(size).fill(null), tally2: null, ties2: null, auto: null,
     category, word, foolWord, guessWords: shuffle(guessWords),
     roles, turn: 0, desc: [], votes: Array(size).fill(null),
     suspect: null, tally: null, ties: null, guess: null, outcome: null,
@@ -263,6 +265,7 @@ const actions = {
     const { room, seat } = ctx, g = room.game;
     if (!g || !playing(room) || g.phase !== 'guess') return fail('지금은 정답을 맞히는 단계가 아니에요.');
     if (seat !== g.suspect) fail('지목된 사람만 정답을 고를 수 있어요.');
+    if (g.deadline !== null && Date.now() > g.deadline) fail('제한 시간이 지났어요.');
     const w = body.word;
     if (typeof w !== 'string' || !g.guessWords.includes(w)) fail('보기에서 제시어 하나를 골라 주세요.');
     g.guess = w;
@@ -289,8 +292,27 @@ const actions = {
 };
 actions.restart = actions.start;
 
+/** 정답 제한 시간 타이머: 방 상태가 바뀔 때마다 맞춰 줍니다. @type {Map<string, {g: Game, t: NodeJS.Timeout}>} */
+const guessTimers = new Map();
+/** @param {Room} room */
+function syncTimer(room) {
+  const g = room.game, cur = guessTimers.get(room.code);
+  const want = room.status === 'play' && g && g.phase === 'guess' ? g : null;
+  if (cur && cur.g !== want) { clearTimeout(cur.t); guessTimers.delete(room.code); }
+  if (!want || (cur && cur.g === want)) return;
+  want.deadline = Date.now() + GUESS_MS;
+  const t = setTimeout(() => {
+    guessTimers.delete(room.code);
+    if (rooms.get(room.code) !== room || room.game !== want || room.status !== 'play' || want.phase !== 'guess') return;
+    endGame(want, 'citizen', (want.mode === 'fool' ? '바보' : '라이어') + '가 제한 시간(' + Math.round(GUESS_MS / 1000) + '초) 안에 제시어를 고르지 못해서 졌어요.');
+    broadcast(room);
+  }, GUESS_MS);
+  guessTimers.set(room.code, { g: want, t });
+}
+
 /** @param {Room} room */
 function deleteRoom(room) {
+  const tm = guessTimers.get(room.code); if (tm) { clearTimeout(tm.t); guessTimers.delete(room.code); }
   for (const p of room.players) tokens.delete(p.tokenHash);
   for (const c of room.clients) { try { c.res.end(); } catch (e) { /* ignore */ } }
   rooms.delete(room.code);
@@ -325,6 +347,7 @@ function viewFor(room, seat) {
   if (g.phase === 'revote' || g.phase === 'guess' || g.phase === 'end') {
     Object.assign(v, { tally: g.tally, ties: g.ties, suspect: g.suspect, tally2: g.tally2, ties2: g.ties2, auto: g.auto });
     if (g.phase === 'guess' && seat === g.suspect) v.guessWords = g.guessWords;
+    if (g.phase === 'guess') Object.assign(v, { guessDeadline: g.deadline, now: Date.now() });
   }
   if (g.phase === 'end' && g.outcome) {
     v.result = Object.assign({}, g.outcome, {
@@ -436,7 +459,7 @@ const server = http.createServer(async (req, res) => {
       const fn = Object.prototype.hasOwnProperty.call(actions, body.type) ? actions[body.type] : null;
       if (!fn) fail('알 수 없는 동작이에요.');
       else fn(ctx, body);
-      if (rooms.get(ctx.room.code) === ctx.room) broadcast(ctx.room);
+      if (rooms.get(ctx.room.code) === ctx.room) { syncTimer(ctx.room); broadcast(ctx.room); }
       return send(res, 200, { ok: true });
     }
     return send(res, 404, { error: '없는 주소예요.' });

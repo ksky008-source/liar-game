@@ -1,6 +1,6 @@
 {
   "name": "liar-game",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "description": "라이어게임 — 4~8인 실시간 온라인 추리 게임 (노멀·바보·스파이모드)",
   "author": "KIMJIHUN",
   "main": "server.js",

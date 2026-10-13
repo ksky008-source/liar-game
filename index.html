@@ -167,6 +167,14 @@ input.code { font-family: var(--f-mono); letter-spacing: .35em; text-transform: 
 .pick b { overflow-wrap: anywhere; }
 .pick[aria-pressed=true] { border-color: var(--mint); background: var(--mint-soft); }
 .words { grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); }
+.timer { display: flex; align-items: baseline; gap: 8px; padding: 12px 16px; border-radius: 12px; background: var(--raised); border: 1px solid var(--line); }
+.timer .tl { color: var(--muted); font-size: 13px; font-weight: 700; }
+.timer b { font-family: var(--f-mono); font-size: 28px; line-height: 1; color: var(--fg); font-variant-numeric: tabular-nums; min-width: 2ch; text-align: right; }
+.timer.urgent { background: var(--liar-soft); border-color: var(--liar); }
+.timer.urgent b { color: var(--liar); font-size: 40px; animation: beat .5s ease-in-out infinite alternate; }
+.timer.urgent .tl { color: var(--liar); }
+@keyframes beat { from { transform: scale(1); } to { transform: scale(1.18); } }
+@media (prefers-reduced-motion: reduce) { .timer.urgent b { animation: none; } }
 .progress { font-family: var(--f-mono); font-size: 13px; color: var(--amber); }
 .tally { display: flex; flex-direction: column; gap: 6px; }
 .bar { display: grid; grid-template-columns: 90px minmax(0, 1fr) 28px; gap: 10px; align-items: center; font-size: 14px; }
@@ -250,7 +258,7 @@ footer.credit p.copy { font-size: 13.5px; color: var(--muted); letter-spacing: .
     if (es) es.close();
     if (!S.token) { queue(); return; }
     es = new EventSource('/api/events?token=' + encodeURIComponent(S.token));
-    es.onmessage = e => { S.view = JSON.parse(e.data); S.connected = true; S.loading = false; queue(); };
+    es.onmessage = e => { S.view = JSON.parse(e.data); S.skew = typeof S.view.now === 'number' ? S.view.now - Date.now() : 0; S.connected = true; S.loading = false; queue(); };
     es.onopen = () => { S.connected = true; queue(); };
     es.onerror = async () => {
       S.connected = false; queue();
@@ -282,6 +290,7 @@ footer.credit p.copy { font-size: 13.5px; color: var(--muted); letter-spacing: .
       Object.keys(keep).forEach(id => { const el = document.getElementById(id); if (el) { el.value = keep[id].v; if (keep[id].f) { el.focus(); try { el.setSelectionRange(keep[id].s, keep[id].s); } catch (e) {} } } });
       const d = document.getElementById('desc'); if (d) updateCount(d);
     }
+    tick();
     const msg = S.error || S.notice;
     $toast.innerHTML = msg ? '<div class="toast' + (S.error ? '' : ' info') + '" role="alert"><span>' + esc(msg) + '</span><button type="button" data-act="dismiss" aria-label="닫기">닫기</button></div>' : '';
   }
@@ -418,13 +427,13 @@ footer.credit p.copy { font-size: 13.5px; color: var(--muted); letter-spacing: .
       return h + descLog(V);
     }
     if (V.phase === 'guess') {
-      let h = '<div><span class="label">최종 판정</span><h2>' + esc(nick(V, V.suspect)) + '님이 지목됐어요</h2></div>' + tallies(V) + (V.guessWords ? '<div class="label">라운드별 설명 · 참고하세요</div>' : '<div class="label">라운드별 설명</div>') + descLog(V);
+      let h = '<div><span class="label">최종 판정</span><h2>' + esc(nick(V, V.suspect)) + '님이 지목됐어요</h2></div>' + '<div class="timer" id="timer" role="timer"><span class="tl">남은 시간</span><b id="cd">60</b><span class="tl">초</span></div>' + tallies(V) + (V.guessWords ? '<div class="label">라운드별 설명 · 참고하세요</div>' : '<div class="label">라운드별 설명</div>') + descLog(V);
       if (V.guessWords) {
         const who = V.mode === 'fool' ? '당신은 사실 <b>바보</b>였어요! 다른 사람들은 다른 제시어를 받았어요. 시민들의 진짜 제시어를 맞히면 역전승이에요.' : '마지막 기회예요. 제시어를 맞히면 라이어 쪽이 이겨요.';
-        h += '<div class="status mine">' + who + ' 카테고리 <b>' + esc(V.category) + '</b>에서 하나를 고르세요.</div>' +
+        h += '<div class="status mine"><b>1분 이내에 정답을 고르세요.</b> 시간 안에 고르지 못하면 ' + (V.mode === 'fool' ? '바보' : '라이어') + '의 패배예요.<br>' + who + ' 카테고리 <b>' + esc(V.category) + '</b>에서 하나를 고르세요.</div>' +
           '<div class="picks words">' + V.guessWords.map((w, i) => '<button type="button" class="pick" data-act="pickguess" data-i="' + i + '" aria-pressed="' + (ui.guessPick === i) + '"><b>' + esc(w) + '</b></button>').join('') + '</div>' +
           '<button class="btn primary block" type="button" data-act="guess"' + (ui.guessPick === null || S.busy ? ' disabled' : '') + '>' + (ui.guessPick === null ? '제시어를 골라 주세요' : '"' + esc(V.guessWords[ui.guessPick]) + '"(으)로 정답 제출') + '</button>';
-      } else h += waitBox(esc(nick(V, V.suspect)) + '님이 마지막으로 정답을 맞히는 중이에요. 맞히면 판이 뒤집혀요.');
+      } else h += waitBox(esc(nick(V, V.suspect)) + '님이 마지막으로 정답을 맞히는 중이에요. 1분 안에 고르지 못하면 ' + (V.mode === 'fool' ? '바보' : '라이어') + '의 패배예요.');
       return h;
     }
     return endView(V);
@@ -467,6 +476,15 @@ footer.credit p.copy { font-size: 13.5px; color: var(--muted); letter-spacing: .
       : '<div class="row"><p class="muted" style="flex:1">방장이 다시 시작하면 새 판이 열려요.</p><button class="btn ghost" type="button" data-act="lobby"' + (S.busy ? ' disabled' : '') + '>대기실로</button></div>';
     return h + descLog(V);
   }
+
+  function tick() {
+    const V = S.view, cd = document.getElementById('cd'), box = document.getElementById('timer');
+    if (!cd || !V || V.phase !== 'guess' || typeof V.guessDeadline !== 'number') return;
+    const left = Math.max(0, Math.ceil((V.guessDeadline - (Date.now() + (S.skew || 0))) / 1000));
+    if (cd.textContent !== String(left)) cd.textContent = left;
+    if (box) box.classList.toggle('urgent', left <= 10);
+  }
+  setInterval(tick, 200);
 
   function updateCount(el) { const c = document.getElementById('desc-count'); if (c) c.textContent = [...el.value].length + ' / ' + (S.view ? S.view.maxDesc : 60); }
 

@@ -5,6 +5,7 @@
 process.env.LIAR_NO_RATE_LIMIT = '1';
 const assert = require('assert');
 const http = require('http');
+process.env.LIAR_GUESS_MS = '2500'; // 시간 초과 시험용으로 줄임 (실제 서비스는 60초)
 const { server, rooms, tokens } = require('./server');
 
 let BASE;
@@ -32,7 +33,7 @@ function listen(token) {
   return c;
 }
 const sleep = ms => new Promise(r => setTimeout(r, ms));
-async function until(f, label) { for (let i = 0; i < 500; i++) { try { if (f()) return; } catch (e) { /* retry */ } await sleep(10); } throw new Error('시간 초과: ' + label); }
+async function until(f, label, ms = 5000) { for (let i = 0; i < ms / 10; i++) { try { if (f()) return; } catch (e) { /* retry */ } await sleep(10); } throw new Error('시간 초과: ' + label); }
 const act = (token, type, extra) => req('POST', '/api/action', Object.assign({ token, type }, extra));
 let checks = 0;
 async function expectErr(p, re, label, quiet) {
@@ -282,6 +283,43 @@ async function playRound(R, mode, n, target, guess, rounds, rv) {
       close(R);
     }
   };
+  console.log('\n[정답 제한 시간]');
+  for (const mode of ['normal', 'fool']) {
+    const R = await makeRoom(mode, 4);
+    assert.strictEqual((await act(R.toks[0], 'rounds', { rounds: 1 })).status, 200);
+    await until(() => R.cl.every(c => c.view.roundsSetting === 1), 'r1');
+    assert.strictEqual((await act(R.toks[0], 'start')).status, 200);
+    await until(() => R.cl.every(c => c.view.phase === 'desc'), 'start');
+    const g = rooms.get(R.code).game, gs = g.roles.indexOf(mode === 'fool' ? 'fool' : 'liar');
+    for (let k = 0; k < 4; k++) { const s = g.orders[0][k]; assert.strictEqual((await act(R.toks[s], 'describe', { text: '설명' + k })).status, 200); await until(() => R.cl.every(c => c.view.desc.length === k + 1), 'd' + k); }
+    await until(() => R.cl.every(c => c.view.phase === 'vote'), 'vote');
+    for (let i = 0; i < 4; i++) assert.strictEqual((await act(R.toks[i], 'vote', { target: i === gs ? (gs + 1) % 4 : gs })).status, 200);
+    await until(() => R.cl.every(c => c.view.phase === 'guess'), 'guess');
+    const V = R.cl[0].view;
+    assert.ok(V.guessDeadline > V.now && V.guessDeadline - V.now <= 2500, '남은 시간이 서버 기준으로 내려옴');
+    await until(() => R.cl.every(c => c.view.phase === 'end'), 'timeout', 6000);
+    const res = R.cl[0].view.result;
+    assert.strictEqual(res.winner, 'citizen'); assert.strictEqual(res.label, '시민 승리'); assert.ok(/제한 시간/.test(res.reason));
+    assert.strictEqual(res.guess, null);
+    await expectErr(act(R.toks[gs], 'guess', { word: g.word }), /단계가 아니에요|지났/, '시간 초과 뒤 정답 제출', true);
+    console.log('  ✓ ' + mode + ': 제한 시간 안에 안 고르면 ' + (mode === 'fool' ? '바보' : '라이어') + ' 패배 → ' + res.label);
+    close(R);
+  }
+  {
+    const R = await makeRoom('normal', 4); // 시간 안에 고르면 정상 판정, 이후 타이머가 결과를 덮어쓰지 않음
+    await act(R.toks[0], 'rounds', { rounds: 1 }); await until(() => R.cl.every(c => c.view.roundsSetting === 1), 'r1');
+    await act(R.toks[0], 'start'); await until(() => R.cl.every(c => c.view.phase === 'desc'), 'start');
+    const g = rooms.get(R.code).game, L = g.roles.indexOf('liar');
+    for (let k = 0; k < 4; k++) { await act(R.toks[g.orders[0][k]], 'describe', { text: '설명' + k }); await until(() => R.cl.every(c => c.view.desc.length === k + 1), 'd' + k); }
+    for (let i = 0; i < 4; i++) await act(R.toks[i], 'vote', { target: i === L ? (L + 1) % 4 : L });
+    await until(() => R.cl.every(c => c.view.phase === 'guess'), 'guess');
+    assert.strictEqual((await act(R.toks[L], 'guess', { word: g.word })).status, 200);
+    await until(() => R.cl.every(c => c.view.phase === 'end'), 'end');
+    await sleep(3000);
+    assert.strictEqual(R.cl[0].view.result.label, '라이어 승리'); assert.strictEqual(R.cl[0].view.result.guess, g.word);
+    console.log('  ✓ 시간 안에 정답을 고르면 타이머가 결과를 바꾸지 않음');
+    close(R);
+  }
   console.log('\n[모드별 전체 게임 진행]');
   await run('normal', [4, 5, 6, 7, 8], s => (s === 4 ? [['guesser', 'right'], ['guesser', 'wrong'], ['other'], ['tie', 'wrong', 'decide']] : s === 8 ? [['guesser', 'wrong'], ['tie', 'right', 'decide']] : [['guesser', 'wrong']]));
   await run('normal', [6], () => [['tieA', 'wrong', 'decide'], ['tieB', 'right', 'decide'], ['tieA', 'right', 'again'], ['tieB', 'wrong', 'again'], ['tie', 'wrong', 'again']]);
